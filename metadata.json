@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: Quran Player",
+  "description": "A professional Material 3 app for creating custom Quranic shortcut cards that trigger automation workflows via clipboard text.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

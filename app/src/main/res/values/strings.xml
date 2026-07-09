@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">مشغل القرآن</string>
+    <string name="copied_success">تم نسخ النص إلى الحافظة بنجاح!</string>
+    <string name="add_card">إضافة صورة</string>
+    <string name="edit_card">تعديل الصورة</string>
+    <string name="delete_card">حذف الصورة</string>
+    <string name="card_title">صورة</string>
+    <string name="card_text">صوت القارئ</string>
+    <string name="save">حفظ</string>
+    <string name="cancel">إلغاء</string>
+    <string name="choose_image">اختر صورة الغلاف</string>
+    <string name="select_template">أو اختر من التصاميم الجاهزة</string>
+    <string name="no_cards_yet">لا توجد بطاقات مضافة بعد</string>
+    <string name="no_cards_desc">انقر على الزر (+) لإضافة أول بطاقة مخصصة لتشغيل وتفعيل التلاوات.</string>
+</resources>
