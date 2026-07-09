@@ -62,7 +62,7 @@ object MqttManager {
         connect()
     }
 
-    private fun connect() {
+    fun connect() {
         if (isConnecting) return
         val c = client ?: return
         if (c.state.isConnected) {

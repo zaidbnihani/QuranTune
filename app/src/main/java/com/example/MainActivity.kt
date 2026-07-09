@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
@@ -1191,6 +1192,15 @@ fun LinkingDialog(
     }
     
     Dialog(onDismissRequest = onDismiss) {
+        val isOptimizing = remember {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                !powerManager.isIgnoringBatteryOptimizations(context.packageName)
+            } else {
+                false
+            }
+        }
+        
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
@@ -1336,6 +1346,69 @@ fun LinkingDialog(
                     }
 
                     if (SyncManager.isLinked(context)) {
+                        
+                        if (isOptimizing) {
+                            item {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = Color(0xFFFFFDE7),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFFF59D))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Info,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFBC02D),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "استقرار المزامنة في الخلفية",
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF5D4037)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "لضمان بقاء المزامنة نشطة واستقبل إشعارات التشغيل حتى لو كان التطبيق مغلقاً لساعات، يُنصح باستثناء التطبيق من قيود تحسين البطارية.",
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF795548),
+                                            lineHeight = 18.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = {
+                                                try {
+                                                    val intent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                    context.startActivity(intent)
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(context, "الرجاء البحث عن 'تحسين البطارية' في الإعدادات واستثناء التطبيق", Toast.LENGTH_LONG).show()
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(0xFFFBC02D),
+                                                contentColor = Color.Black
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            contentPadding = PaddingValues(vertical = 8.dp)
+                                        ) {
+                                            Text("السماح بالعمل في الخلفية", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         item {
                             Button(
                                 onClick = {
