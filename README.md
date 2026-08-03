@@ -171,3 +171,4 @@ QuranTune/
 صُنع بـ حب
 
 </div>
+لمعرفه المزيد يرجى الدخول الرابط التالي.https://quran-player-web-version.web.app
