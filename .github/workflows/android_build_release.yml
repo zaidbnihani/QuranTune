@@ -55,6 +55,47 @@ jobs:
             echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
           fi
 
+      - name: Ensure google-services.json Exists
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "Using GOOGLE_SERVICES_JSON from secrets..."
+            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > app/google-services.json
+          elif [ ! -f "app/google-services.json" ]; then
+            echo "Generating fallback app/google-services.json..."
+            mkdir -p app
+            cat << 'EOF' > app/google-services.json
+            {
+              "project_info": {
+                "project_number": "847919276303",
+                "project_id": "quran-player-47edf",
+                "storage_bucket": "quran-player-47edf.firebasestorage.app"
+              },
+              "client": [
+                {
+                  "client_info": {
+                    "mobilesdk_app_id": "1:847919276303:android:cf9b5a860830fecbe15e7a",
+                    "android_client_info": {
+                      "package_name": "com.aistudio.quranplayer.shmrzp"
+                    }
+                  },
+                  "oauth_client": [],
+                  "api_key": [
+                    {
+                      "current_key": "AIzaSyBbGAZWsyKpAByNFKjYHAy_K3rY-_hWXus"
+                    }
+                  ],
+                  "services": {
+                    "appinvite_service": {
+                      "other_platform_oauth_client": []
+                    }
+                  }
+                }
+              ],
+              "configuration_version": "1"
+            }
+EOF
+          fi
+
       - name: Build Release APK
         run: ./gradlew assembleRelease --stacktrace
 
