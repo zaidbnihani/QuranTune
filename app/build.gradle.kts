@@ -29,13 +29,13 @@ android {
       keyPassword = "android"
     }
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: ""
-      val storeFileExists = keystorePath.isNotEmpty() && file(keystorePath).exists()
-      if (storeFileExists) {
-        storeFile = file(keystorePath)
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
+      val envKeystorePath = System.getenv("KEYSTORE_PATH") ?: ""
+      val keystoreFile = if (envKeystorePath.isNotEmpty()) file(envKeystorePath) else file("${rootDir}/debug.keystore")
+      if (keystoreFile.exists()) {
+        storeFile = keystoreFile
+        storePassword = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotEmpty() } ?: "android"
+        keyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotEmpty() } ?: "androiddebugkey"
+        keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotEmpty() } ?: "android"
       } else {
         storeFile = file("${rootDir}/debug.keystore")
         storePassword = "android"

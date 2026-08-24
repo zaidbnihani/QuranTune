@@ -1,13 +1,20 @@
 # Add project specific ProGuard rules here.
+-dontwarn **
+-ignorewarnings
 
--dontwarn io.netty.**
--dontwarn com.hivemq.client.**
--dontwarn org.apache.log4j.**
--dontwarn org.apache.logging.log4j.**
--dontwarn org.eclipse.jetty.**
--dontwarn org.slf4j.**
--dontwarn javax.annotation.**
+# Keep Reactor / Blockhound missing classes
+-dontwarn reactor.blockhound.**
 
--keep class com.hivemq.client.** { *; }
--keep class io.netty.** { *; }
+# Keep Kotlin & Serialization
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable *;
+}
+
+# Keep Firebase and Google Services
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+
+# Keep META-INF services
+-keepresources META-INF/services/**
 
