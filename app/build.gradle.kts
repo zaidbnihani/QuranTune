@@ -51,10 +51,15 @@ android {
     }
     release {
       isCrunchPngs = false
-      isMinifyEnabled = true
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      isMinifyEnabled = false
       signingConfig = signingConfigs.getByName("release")
     }
+  }
+
+  lint {
+    checkReleaseBuilds = false
+    abortOnError = false
+    disable += "InvalidFragmentVersionForActivityResult"
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

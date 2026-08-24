@@ -16,5 +16,5 @@
 -keep class com.google.android.gms.** { *; }
 
 # Keep META-INF services
--keepresources META-INF/services/**
+-keepdirectories META-INF/services/**
 
