@@ -8,11 +8,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      release_title:
-        description: 'Release Title'
-        required: false
-        default: 'Automated APK Release'
 
 jobs:
   build:
@@ -63,37 +58,7 @@ jobs:
           elif [ ! -f "app/google-services.json" ]; then
             echo "Generating fallback app/google-services.json..."
             mkdir -p app
-            cat << 'EOF' > app/google-services.json
-            {
-              "project_info": {
-                "project_number": "847919276303",
-                "project_id": "quran-player-47edf",
-                "storage_bucket": "quran-player-47edf.firebasestorage.app"
-              },
-              "client": [
-                {
-                  "client_info": {
-                    "mobilesdk_app_id": "1:847919276303:android:cf9b5a860830fecbe15e7a",
-                    "android_client_info": {
-                      "package_name": "com.aistudio.quranplayer.shmrzp"
-                    }
-                  },
-                  "oauth_client": [],
-                  "api_key": [
-                    {
-                      "current_key": "AIzaSyBbGAZWsyKpAByNFKjYHAy_K3rY-_hWXus"
-                    }
-                  ],
-                  "services": {
-                    "appinvite_service": {
-                      "other_platform_oauth_client": []
-                    }
-                  }
-                }
-              ],
-              "configuration_version": "1"
-            }
-EOF
+            echo '{"project_info":{"project_number":"847919276303","project_id":"quran-player-47edf","storage_bucket":"quran-player-47edf.firebasestorage.app"},"client":[{"client_info":{"mobilesdk_app_id":"1:847919276303:android:cf9b5a860830fecbe15e7a","android_client_info":{"package_name":"com.aistudio.quranplayer.shmrzp"}},"oauth_client":[],"api_key":[{"current_key":"AIzaSyBbGAZWsyKpAByNFKjYHAy_K3rY-_hWXus"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}' > app/google-services.json
           fi
 
       - name: Build Release APK
