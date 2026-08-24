@@ -17,6 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -28,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -50,68 +54,84 @@ fun QrCodeDisplayDialog(
     val qrPayload = "$deviceId|$sharedSecret"
     val qrBitmap = remember(qrPayload) { QrCodeUtils.generateQrCode(qrPayload) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         ImmersiveDialogEffect()
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0xFF1E293B).copy(alpha = 0.85f),
-            border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "رمز الربط السريع",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFD4AF37)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "امسح هذا الرمز من الجهاز الآخر للربط فوراً",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                if (qrBitmap != null) {
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .border(2.dp, Color(0xFFD4AF37), RoundedCornerShape(16.dp))
-                    ) {
-                        Image(
-                            bitmap = qrBitmap.asImageBitmap(),
-                            contentDescription = "QR Code",
-                            modifier = Modifier.size(220.dp).padding(16.dp)
-                        )
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Text(
-                    text = "ID: $deviceId",
-                    fontSize = 12.sp,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFD4AF37),
-                        contentColor = Color.Black
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xFF042416).copy(alpha = 0.95f),
+                    border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth(0.88f)
+                        .widthIn(max = 380.dp)
+                        .padding(vertical = 12.dp)
                 ) {
-                    Text("إغلاق", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "رمز الربط السريع",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFD4AF37)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "امسح هذا الرمز من الجهاز الآخر للربط فوراً",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        if (qrBitmap != null) {
+                            Surface(
+                                color = Color.White,
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier
+                                    .padding(8.dp)
+                                    .border(2.dp, Color(0xFFD4AF37), RoundedCornerShape(16.dp))
+                            ) {
+                                Image(
+                                    bitmap = qrBitmap.asImageBitmap(),
+                                    contentDescription = "QR Code",
+                                    modifier = Modifier.size(220.dp).padding(16.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Text(
+                            text = "ID: $deviceId",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        Button(
+                            onClick = onDismiss,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFD4AF37),
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                        ) {
+                            Text("إغلاق", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+                    }
                 }
             }
         }
@@ -148,10 +168,11 @@ fun QrScannerDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         ImmersiveDialogEffect()
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color.Black
-        ) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = Color.Black
+            ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 if (hasCameraPermission) {
                     val previewView = remember { PreviewView(context) }
@@ -297,6 +318,7 @@ fun QrScannerDialog(
                     )
                 }
             }
+        }
         }
     }
 }

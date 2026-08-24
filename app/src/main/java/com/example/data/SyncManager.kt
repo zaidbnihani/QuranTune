@@ -287,7 +287,6 @@ object SyncManager {
         val linkedId = repo.getLinkedId()
         MqttManager.setSharedSecret(repo.getSharedSecret())
         MqttManager.initialize(id, linkedId)
-        SupabaseManager.initialize(context, id)
         return id
     }
 
@@ -326,10 +325,9 @@ object SyncManager {
         repo.setSharedSecret(secretToUse)
         MqttManager.setSharedSecret(secretToUse)
         MqttManager.initialize(myId, linkedId)
-        SupabaseManager.initialize(context, myId)
         _isSyncActive.value = true
         
-        // Notify the other device via Supabase Realtime & MQTT that we linked to it
+        // Notify the other device via MQTT that we linked to it
         scope.launch {
             try {
                 val json = JSONObject()
@@ -370,7 +368,6 @@ object SyncManager {
                         repo.setSharedSecret(computedSecret)
                         MqttManager.setSharedSecret(computedSecret)
                         MqttManager.initialize(myId, senderId)
-                        SupabaseManager.initialize(context, myId)
                         
                         scope.launch {
                             try {
@@ -410,13 +407,8 @@ object SyncManager {
         
         val myId = repo.getDeviceId()
         Log.d("SyncManager", "Starting Realtime sync listeners for device: $myId")
-        
-        // Initialize Supabase Realtime listeners
-        SupabaseManager.initialize(context, myId)
-        SupabaseManager.removeDeviceSyncListener(genericMessageListener)
-        SupabaseManager.addDeviceSyncListener(genericMessageListener)
 
-        // Initialize MQTT as well for double redundancy
+        // Initialize MQTT for device sync
         MqttManager.setSharedSecret(repo.getSharedSecret())
         MqttManager.initialize(myId, linkedId)
         MqttManager.removeMessageListener(genericMessageListener)
@@ -426,16 +418,7 @@ object SyncManager {
     }
 
     private fun publishRaw(targetId: String, jsonString: String, secret: String?) {
-        val payloadToSend = if (secret != null) {
-            CryptoHelper.encrypt(jsonString, secret) ?: jsonString
-        } else {
-            jsonString
-        }
-
-        // 1. Supabase Realtime Delivery (Broadcast + Postgres CDC)
-        SupabaseManager.publishDeviceSyncMessage(targetId, payloadToSend)
-
-        // 2. MQTT Dual-delivery
+        // MQTT delivery
         try {
             MqttManager.publish(targetId, jsonString, false)
         } catch (e: Exception) {

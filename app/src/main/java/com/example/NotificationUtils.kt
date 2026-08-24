@@ -6,6 +6,20 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
+fun createNotificationChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val name = "تنبيهات مشغل القرآن"
+        val descriptionText = "قناة مخصصة لإرسال تنبيهات تشغيل سور وآيات القرآن الكريـم"
+        val importance = android.app.NotificationManager.IMPORTANCE_HIGH
+        val channel = android.app.NotificationChannel("QURAN_NOTIFICATIONS", name, importance).apply {
+            description = descriptionText
+        }
+        val notificationManager: android.app.NotificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.createNotificationChannel(channel)
+    }
+}
+
 fun sendQuranNotification(context: Context, title: String, text: String) {
     createNotificationChannel(context)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

@@ -12,6 +12,12 @@ class DeviceLinkRepository(private val context: Context) {
     private val KEY_LINKED_ID = "linked_id"
     private val KEY_SHARED_SECRET = "shared_secret"
 
+    companion object {
+        @Volatile private var cachedDeviceId: String? = null
+        @Volatile private var cachedLinkedId: String? = null
+        @Volatile private var cachedSharedSecret: String? = null
+    }
+
     private val prefs: SharedPreferences by lazy {
         try {
             val masterKey = MasterKey.Builder(context)
@@ -32,27 +38,37 @@ class DeviceLinkRepository(private val context: Context) {
     }
 
     fun getDeviceId(): String {
+        cachedDeviceId?.let { return it }
         var id = prefs.getString(KEY_DEVICE_ID, null)
         if (id == null) {
             id = UUID.randomUUID().toString().substring(0, 8).uppercase()
             prefs.edit().putString(KEY_DEVICE_ID, id).apply()
         }
+        cachedDeviceId = id
         return id!!
     }
 
     fun getLinkedId(): String? {
-        return prefs.getString(KEY_LINKED_ID, null)
+        cachedLinkedId?.let { return it }
+        val id = prefs.getString(KEY_LINKED_ID, null)
+        cachedLinkedId = id
+        return id
     }
 
     fun setLinkedId(linkedId: String?) {
+        cachedLinkedId = linkedId
         prefs.edit().putString(KEY_LINKED_ID, linkedId).apply()
     }
 
     fun getSharedSecret(): String? {
-        return prefs.getString(KEY_SHARED_SECRET, null)
+        cachedSharedSecret?.let { return it }
+        val secret = prefs.getString(KEY_SHARED_SECRET, null)
+        cachedSharedSecret = secret
+        return secret
     }
 
     fun setSharedSecret(secret: String?) {
+        cachedSharedSecret = secret
         prefs.edit().putString(KEY_SHARED_SECRET, secret).apply()
     }
 

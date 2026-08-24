@@ -15,8 +15,8 @@ android {
     applicationId = "com.aistudio.quranplayer.shmrzp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 8
-    versionName = "2.7.1"
+    versionCode = 10
+    versionName = "2.7.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
