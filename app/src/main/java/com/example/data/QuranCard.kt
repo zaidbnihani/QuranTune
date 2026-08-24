@@ -12,6 +12,7 @@ data class QuranCard(
     val presetResName: String? = null, // "green", "blue", or null for default/custom
     val reciterIdentifier: String? = null,
     val notificationTriggerWord: String? = null,
+    val youtubeUrl: String? = null,
     val sortOrder: Int = 0,
     val timestamp: Long = System.currentTimeMillis()
 )

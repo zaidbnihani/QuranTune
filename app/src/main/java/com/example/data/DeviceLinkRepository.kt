@@ -2,13 +2,34 @@ package com.example.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import java.util.UUID
 
 class DeviceLinkRepository(private val context: Context) {
-    private val PREFS_NAME = "quran_sync_prefs"
+    private val PREFS_NAME = "quran_sync_prefs_secure"
     private val KEY_DEVICE_ID = "device_id"
     private val KEY_LINKED_ID = "linked_id"
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val KEY_SHARED_SECRET = "shared_secret"
+
+    private val prefs: SharedPreferences by lazy {
+        try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("DeviceLinkRepository", "Failed to initialize EncryptedSharedPreferences, falling back to standard prefs", e)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        }
+    }
 
     fun getDeviceId(): String {
         var id = prefs.getString(KEY_DEVICE_ID, null)
@@ -25,6 +46,22 @@ class DeviceLinkRepository(private val context: Context) {
 
     fun setLinkedId(linkedId: String?) {
         prefs.edit().putString(KEY_LINKED_ID, linkedId).apply()
+    }
+
+    fun getSharedSecret(): String? {
+        return prefs.getString(KEY_SHARED_SECRET, null)
+    }
+
+    fun setSharedSecret(secret: String?) {
+        prefs.edit().putString(KEY_SHARED_SECRET, secret).apply()
+    }
+
+    fun getTempPrivateKey(): String? {
+        return prefs.getString("temp_ec_private_key", null)
+    }
+
+    fun setTempPrivateKey(key: String?) {
+        prefs.edit().putString("temp_ec_private_key", key).apply()
     }
 
     fun isLinked(): Boolean {

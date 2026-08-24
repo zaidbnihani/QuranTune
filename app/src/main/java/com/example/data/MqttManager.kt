@@ -26,6 +26,7 @@ object MqttManager {
     private val messageListeners = CopyOnWriteArrayList<(String) -> Unit>()
     private var myDeviceId: String? = null
     private var targetDeviceId: String? = null
+    private var sharedSecret: String? = null
     private var isConnecting = false
     private var wasConnected = false
 
@@ -54,12 +55,13 @@ object MqttManager {
             .serverHost(BROKER_HOST)
             .serverPort(BROKER_PORT)
             .automaticReconnectWithDefaultConfig()
-            .simpleAuth() 
-                .username("quran_user_$deviceId")
-                .applySimpleAuth()
             .buildAsync()
 
         connect()
+    }
+
+    fun setSharedSecret(secret: String?) {
+        sharedSecret = secret
     }
 
     fun connect() {
@@ -96,8 +98,6 @@ object MqttManager {
                     }
                 }
             }
-        
-        startHeartbeat()
     }
 
     private fun startHeartbeat() {
@@ -105,7 +105,7 @@ object MqttManager {
         heartbeatJob = scope.launch {
             var tick = 0
             while (true) {
-                delay(15000)
+                delay(60000)
                 tick++
                 try {
                     val c = client
@@ -151,10 +151,22 @@ object MqttManager {
                 val payload = if (publish.payload.isPresent) {
                     StandardCharsets.UTF_8.decode(publish.payload.get().asReadOnlyBuffer()).toString()
                 } else ""
-                Log.d("MqttManager", "Received: $payload")
+                Log.d("MqttManager", "Received (raw): $payload")
+
+                val secret = sharedSecret
+                val decryptedPayload = if (secret != null) {
+                    val decrypted = CryptoHelper.decrypt(payload, secret)
+                    if (decrypted == null) {
+                        Log.e("MqttManager", "Decryption failed - shared secret mismatch")
+                        return@callback
+                    }
+                    decrypted
+                } else {
+                    payload
+                }
                 
                 try {
-                    val json = JSONObject(payload)
+                    val json = JSONObject(decryptedPayload)
                     val type = json.optString("type")
                     val messageId = json.optString("messageId")
                     
@@ -168,7 +180,7 @@ object MqttManager {
                         pendingAcks.remove(ackId)
                         Log.d("MqttManager", "ACK received for $ackId")
                     } else {
-                        messageListeners.forEach { it.invoke(payload) }
+                        messageListeners.forEach { it.invoke(decryptedPayload) }
                     }
                 } catch (e: Exception) {
                     Log.e("MqttManager", "Error processing message", e)
@@ -205,7 +217,13 @@ object MqttManager {
                         delay(6000)
                         if (pendingAcks.containsKey(msgId)) {
                             Log.d("MqttManager", "Retrying message $msgId (attempt ${retries + 1})...")
-                            publishInternal(topic, finalMessage, true)
+                            val retrySecret = sharedSecret
+                            val retryMessage = if (retrySecret != null) {
+                                CryptoHelper.encrypt(finalMessage, retrySecret) ?: finalMessage
+                            } else {
+                                finalMessage
+                            }
+                            publishInternal(topic, retryMessage, true)
                             retries++
                         }
                     }
@@ -219,7 +237,13 @@ object MqttManager {
             }
         }
 
-        publishInternal(topic, finalMessage, requireAck)
+        val secret = sharedSecret
+        val messageToSend = if (secret != null) {
+            CryptoHelper.encrypt(finalMessage, secret) ?: finalMessage
+        } else {
+            finalMessage
+        }
+        publishInternal(topic, messageToSend, requireAck)
     }
 
     private fun publishInternal(topic: String, message: String, useQos1: Boolean = false) {

@@ -20,6 +20,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,13 +36,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,6 +54,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
@@ -59,6 +65,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,6 +81,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -90,14 +99,32 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.ArrowDropDown
 import com.example.ui.QrCodeDisplayDialog
 import com.example.ui.QrScannerDialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -110,6 +137,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.QuranAudioPlayer
+import com.example.data.AudioOutputDevice
 import com.example.data.QuranCard
 import com.example.data.QuranCardViewModel
 import com.example.data.SyncManager
@@ -120,6 +148,51 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import com.example.ui.theme.MyApplicationTheme
+import com.example.utils.UpdateCheckerEffect
+import com.example.utils.PrivacyPolicyChecker
+import android.net.Uri
+import android.widget.VideoView
+import android.view.ViewGroup
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+
+@Composable
+fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val videoUri = Uri.parse("android.resource://${context.packageName}/raw/background_video")
+            val mediaItem = MediaItem.fromUri(videoUri)
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+            repeatMode = Player.REPEAT_MODE_ALL
+            volume = 0f
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                player = exoPlayer
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+        },
+        modifier = modifier.fillMaxSize()
+    )
+}
+
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -132,9 +205,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun hideSystemUI() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false)
+            window.insetsController?.let { controller ->
+                controller.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                controller.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = (
+                android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemUI()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            hideSystemUI()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        hideSystemUI()
+
         createNotificationChannel(this)
 
         // Request notification permission automatically on startup for Android 13+
@@ -143,18 +250,30 @@ class MainActivity : ComponentActivity() {
         }
         
         // Start MQTT Service
-        startService(Intent(this, MqttService::class.java))
+        try {
+            androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, MqttService::class.java))
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to start MqttService", e)
+        }
+        
+        // Initialize SupabaseManager for remote messages
+        com.example.data.SupabaseManager.initialize(this)
         
         setContent {
             MyApplicationTheme {
                 // Force Right-to-Left layout for full Arabic interface immersive experience
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                        QuranAppDashboard(modifier = Modifier.padding(innerPadding))
-                    }
+                    PrivacyPolicyChecker()
+                    UpdateCheckerEffect()
+                    QuranAppDashboard(modifier = Modifier.fillMaxSize())
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        com.example.data.SupabaseManager.destroy()
     }
 }
 
@@ -172,16 +291,23 @@ fun createNotificationChannel(context: Context) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QuranAppDashboard(
     modifier: Modifier = Modifier,
     viewModel: QuranCardViewModel = viewModel()
 ) {
     val cards by viewModel.uiState.collectAsState()
+    val currentQueue by com.example.data.QuranAudioPlayer.currentQueue.collectAsState()
+    val currentQueueIndex by com.example.data.QuranAudioPlayer.currentQueueIndex.collectAsState()
     val context = LocalContext.current
 
     var showAddEditDialog by remember { mutableStateOf(false) }
     var selectedCardToEdit by remember { mutableStateOf<QuranCard?>(null) }
+    
+    // Drag-and-drop reordering states
+    var draggedItemIndex by remember { mutableStateOf<Int?>(null) }
+    var dragOffset by remember { mutableStateOf(0f) }
     
     // Settings and backup dialog state
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -234,21 +360,47 @@ fun QuranAppDashboard(
 
     // State for sequence playback
     var currentPlayingIndex by remember { mutableStateOf(-1) }
+    var activePlayingCardId by remember { mutableStateOf<String?>(null) }
     
     // Stable state references for callbacks to avoid stale closures
     val updatedCards = rememberUpdatedState(cards)
     val updatedViewModel = rememberUpdatedState(viewModel)
     val updatedCurrentPlayingIndex = rememberUpdatedState(currentPlayingIndex)
 
+    LaunchedEffect(cards, activePlayingCardId) {
+        if (activePlayingCardId != null) {
+            val index = cards.indexOfFirst { it.id.toString() == activePlayingCardId }
+            if (index != -1) {
+                currentPlayingIndex = index
+            }
+        } else {
+            currentPlayingIndex = -1
+        }
+    }
+
     DisposableEffect(Unit) {
         QuranAudioPlayer.onPlaybackStateChanged = { isPlaying, title, cardId ->
-            if (!isPlaying) {
-                currentPlayingIndex = -1
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                activePlayingCardId = if (isPlaying) cardId else null
+                if (!isPlaying) {
+                    currentPlayingIndex = -1
+                } else {
+                    val index = updatedCards.value.indexOfFirst { 
+                        it.id.toString() == cardId || (!title.isNullOrBlank() && it.title == title)
+                    }
+                    if (index != -1) {
+                        currentPlayingIndex = index
+                        activePlayingCardId = updatedCards.value[index].id.toString()
+                    }
+                }
             }
         }
         
         QuranAudioPlayer.onPlaybackCompleted = {
-            currentPlayingIndex = -1
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                activePlayingCardId = null
+                currentPlayingIndex = -1
+            }
         }
         
         onDispose {
@@ -272,29 +424,51 @@ fun QuranAppDashboard(
 
 
     Box(modifier = modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.img_quran_background_crescent),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+        BackgroundVideoPlayer(modifier = Modifier.fillMaxSize())
+        // Soft translucent dark spiritual green/teal overlay for elegant readability and contrast
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.12f),
+                            Color(0xFF071F18).copy(alpha = 0.30f),
+                            Color(0xFF030D0B).copy(alpha = 0.60f)
+                        )
+                    )
+                )
+        )
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color.White,
-        floatingActionButton = {
-            // Smaller, elegant Floating Action Button (FAB) moved to the side as requested
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            floatingActionButton = {
+            // Smaller, elegant Floating Action Button (FAB) styled in Gold to match design
             FloatingActionButton(
                 onClick = {
                     selectedCardToEdit = null
                     showAddEditDialog = true
                 },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
+                containerColor = Color(0xFFD4AF37),
+                contentColor = Color.Black,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .testTag("add_card_fab")
                     .padding(bottom = 16.dp, end = 16.dp)
-                    .shadow(6.dp, RoundedCornerShape(16.dp))
+                    .shadow(8.dp, RoundedCornerShape(16.dp))
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "إضافة بطاقة جديدة", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Add, contentDescription = "إضافة بطاقة جديدة", modifier = Modifier.size(20.dp), tint = Color.Black)
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "بطاقة جديدة",
@@ -309,45 +483,147 @@ fun QuranAppDashboard(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color.White)
+                .background(Color.Transparent),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Elegant Compact Header (Saves vertical space, no useless black/dark banners)
             val isSyncActive by SyncManager.isSyncActive.collectAsState()
             val lastEvent by SyncManager.lastSyncEvent.collectAsState()
+            val incomingPairRequest by SyncManager.incomingPairRequest.collectAsState()
             
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+            if (incomingPairRequest != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { SyncManager.clearIncomingPairRequest() },
+                    title = { Text("طلب ربط جهاز جديد") },
+                    text = { Text("وصلك طلب ربط من جهاز جديد ($incomingPairRequest) - هل توافق على ربط هذا الجهاز والتحكم به عن بعد؟") },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                SyncManager.acceptIncomingPairRequest(context)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        ) {
+                            Text("موافق")
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                SyncManager.clearIncomingPairRequest()
+                            }
+                        ) {
+                            Text("رفض")
+                        }
+                    }
+                )
+            }
+            
+            // Spacer to push content down below the camera cutout/notch in immersive fullscreen
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 540.dp)
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
+                // --- Supabase Remote Messages Announcement Banner ---
+                val remoteMessage by com.example.data.SupabaseManager.currentMessage.collectAsState()
+                AnimatedVisibility(
+                    visible = remoteMessage != null,
+                    enter = fadeIn() + slideInVertically(),
+                    exit = fadeOut() + slideOutVertically()
+                ) {
+                    val msg = remoteMessage
+                    if (msg != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFD4AF37).copy(alpha = 0.15f))
+                                .border(
+                                    BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.6f)),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFD4AF37).copy(alpha = 0.25f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "تنبيه مركزي",
+                                        tint = Color(0xFFD4AF37),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "تنبيه مركزي (إصدار ${msg.version})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD4AF37)
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = msg.message,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White,
+                                        lineHeight = 20.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSyncActive) Color(0xFFF5F5F5) else Color(0xFFFFF3E0))
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                        .border(
+                            BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
+                            shape = RoundedCornerShape(16.dp)
+                        )
                         .clickable { showLinkingDialog = true }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(12.dp)
+                            .size(10.dp)
                             .clip(CircleShape)
                             .background(if (isSyncActive) Color(0xFF4CAF50) else Color(0xFFF44336))
                             .border(1.5.dp, Color.White, CircleShape)
                     )
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Text(
                         text = "إعدادات الربط والتحكم",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.DarkGray,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
                         modifier = Modifier.weight(1f)
                     )
                     
                     if (lastEvent != null) {
                         Text(
                             text = lastEvent!!,
-                            fontSize = 10.sp,
-                            color = Color.Gray,
+                            fontSize = 11.sp,
+                            color = Color.White.copy(alpha = 0.6f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 8.dp)
@@ -360,165 +636,273 @@ fun QuranAppDashboard(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White)
-                        .padding(horizontal = 0.dp, vertical = 0.dp)
+                        .heightIn(min = 74.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
                         .border(
-                            BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(20.dp)
+                            BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
+                            shape = RoundedCornerShape(16.dp)
                         )
-                        .background(Color(0xFFFAFAF7), shape = RoundedCornerShape(20.dp))
-                        .padding(16.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    // Soft circular decorative container
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                            .border(1.5.dp, MaterialTheme.colorScheme.secondary, CircleShape)
-                            .clickable { showLinkingDialog = true },
-                        contentAlignment = Alignment.Center
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
-                            contentDescription = "ربط الأجهزة",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "مشغل القرآن الكريـم",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            letterSpacing = 0.3.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "اضغط على أي بطاقة لتشغيل وتفعيل التلاوة تلقائياً",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
-                    // Gear settings icon for import/export
-    IconButton(
-        onClick = { showSettingsDialog = true },
-        modifier = Modifier.size(40.dp)
-    ) {
-        Icon(
-            imageVector = Icons.Default.Settings,
-            contentDescription = "الإعدادات والنسخ الاحتياطي",
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(24.dp)
-        )
-    }
-                }
-            }
-        }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // WIDE full-width section style list ("أقسام عريضة مرتبة")
-            if (cards.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                            modifier = Modifier.size(80.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(id = R.string.no_cards_yet),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(id = R.string.no_cards_desc),
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(horizontal = 24.dp)
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    item {
-                        Card(
+                        // Soft circular decorative container
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .clickable { 
-                                    currentPlayingIndex = -1
-                                    viewModel.stopAudio() 
-                                },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.12f))
+                                .border(1.5.dp, Color(0xFFD4AF37), CircleShape)
+                                .clickable { showLinkingDialog = true },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Stop",
-                                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
+                                contentDescription = "ربط الأجهزة",
+                                tint = Color(0xFFD4AF37),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "مشغل القرآن الكريـم",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                letterSpacing = 0.3.sp
+                            )
+                            Spacer(modifier = Modifier.height(1.dp))
+                            if (currentQueue.size > 1) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = "تشغيل القائمة: ",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFFD4AF37),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        itemsIndexed(currentQueue) { qIndex, qCard ->
+                                            val isCurrent = qIndex == currentQueueIndex
+                                            val textColor = if (isCurrent) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.6f)
+                                            val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                                            
+                                            Text(
+                                                text = qCard.title,
+                                                fontSize = 11.sp,
+                                                color = textColor,
+                                                fontWeight = fontWeight
+                                            )
+                                            if (qIndex < currentQueue.size - 1) {
+                                                Text(
+                                                    text = "➔",
+                                                    fontSize = 10.sp,
+                                                    color = Color.White.copy(alpha = 0.3f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
                                 Text(
-                                    text = "إيقاف التلاوة",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                    text = "اضغط على أي بطاقة لتشغيل وتفعيل التلاوة تلقائياً",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         }
+
+                        // Gear settings icon for import/export
+                        IconButton(
+                            onClick = { showSettingsDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "الإعدادات والنسخ الاحتياطي",
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
-                    items(cards.indices.toList(), key = { cards[it].id }) { index ->
-                        val card = cards[index]
-                        QuranCardWideRowItem(
-                            card = card,
-                            onCardClick = {
-                                currentPlayingIndex = index
-                                viewModel.playAudio(context, card.reciterIdentifier, card.clipboardText, card.title, card.id.toString())
-                                Toast.makeText(context, "جاري تشغيل التلاوة...", Toast.LENGTH_SHORT).show()
-                            },
-                            onLongClick = {
-                                selectedCardForActions = card
-                                showActionMenuDialog = true
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // WIDE full-width section style list ("أقسام عريضة مرتبة") with static rendering
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 540.dp)
+                        .weight(1f)
+                ) {
+                    if (cards.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(80.dp)
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = stringResource(id = R.string.no_cards_yet),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = stringResource(id = R.string.no_cards_desc),
+                                    fontSize = 14.sp,
+                                    textAlign = TextAlign.Center,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(horizontal = 24.dp)
+                                )
                             }
-                        )
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(86.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color.White.copy(alpha = 0.08f))
+                                        .border(
+                                            BorderStroke(1.2.dp, Color(0xFFEF5350).copy(alpha = 0.5f)),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable { 
+                                            currentPlayingIndex = -1
+                                            viewModel.stopAudio() 
+                                        }
+                                        .padding(horizontal = 16.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Start
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Stop",
+                                            tint = Color(0xFFEF5350),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "إيقاف التلاوة",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFEF5350)
+                                        )
+                                    }
+                                }
+                            }
+                            items(cards.indices.toList(), key = { cards[it].id }) { index ->
+                                val card = cards[index]
+                                val isPlaying = activePlayingCardId == card.id.toString() || (currentPlayingIndex == index)
+                                
+                                val isCurrentlyDragged = draggedItemIndex == index
+                                val translationY = if (isCurrentlyDragged) dragOffset else 0f
+                                
+                                val animatedScale by animateFloatAsState(
+                                    targetValue = if (isCurrentlyDragged) 1.05f else 1f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                    label = "scale"
+                                )
+                                val animatedElevation by animateDpAsState(
+                                    targetValue = if (isCurrentlyDragged) 14.dp else 0.dp,
+                                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                                    label = "elevation"
+                                )
+                                
+                                val itemHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { 86.dp.toPx() }
+
+                                QuranCardWideRowItem(
+                                    card = card,
+                                    isPlaying = isPlaying,
+                                    onCardClick = {
+                                        currentPlayingIndex = index
+                                        viewModel.playAudio(context, card.reciterIdentifier, card.clipboardText, card.title, card.id.toString(), card.youtubeUrl)
+                                        Toast.makeText(context, "جاري تشغيل التلاوة...", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onLongClick = {
+                                        selectedCardForActions = card
+                                        showActionMenuDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            this.translationY = translationY
+                                            this.scaleX = animatedScale
+                                            this.scaleY = animatedScale
+                                        }
+                                        .zIndex(if (isCurrentlyDragged) 10f else 1f)
+                                        .shadow(animatedElevation, shape = RoundedCornerShape(16.dp))
+                                        .pointerInput(index) {
+                                            detectDragGesturesAfterLongPress(
+                                                onDragStart = { _ ->
+                                                    draggedItemIndex = index
+                                                    dragOffset = 0f
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    dragOffset += dragAmount.y
+                                                    
+                                                    if (dragOffset > itemHeightPx && index < cards.size - 1) {
+                                                        viewModel.moveCardDown(card)
+                                                        draggedItemIndex = index + 1
+                                                        dragOffset -= itemHeightPx
+                                                    } else if (dragOffset < -itemHeightPx && index > 0) {
+                                                        viewModel.moveCardUp(card)
+                                                        draggedItemIndex = index - 1
+                                                        dragOffset += itemHeightPx
+                                                    }
+                                                },
+                                                onDragEnd = {
+                                                    draggedItemIndex = null
+                                                    dragOffset = 0f
+                                                },
+                                                onDragCancel = {
+                                                    draggedItemIndex = null
+                                                    dragOffset = 0f
+                                                }
+                                            )
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -533,9 +917,9 @@ fun QuranAppDashboard(
             onDismiss = { showAddEditDialog = false },
             onSave = { title, surahNumber, reciter, triggerWord ->
                 if (selectedCardToEdit == null) {
-                    viewModel.addCard(title, surahNumber, null, "green", reciter, triggerWord)
+                    viewModel.addCard(title, surahNumber, null, "green", reciter, triggerWord, null)
                 } else {
-                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, "green", reciter, triggerWord)
+                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, "green", reciter, triggerWord, null)
                 }
                 showAddEditDialog = false
             }
@@ -544,13 +928,13 @@ fun QuranAppDashboard(
 
     if (showSettingsDialog) {
         Dialog(onDismissRequest = { showSettingsDialog = false }) {
+            ImmersiveDialogEffect()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.92f)
-                    .shadow(16.dp, RoundedCornerShape(24.dp))
-                    .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
+                    .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White
+                color = Color(0xFF042416).copy(alpha = 0.95f)
             ) {
                 Column(
                     modifier = Modifier
@@ -568,17 +952,17 @@ fun QuranAppDashboard(
                             text = "إعدادات النسخ الاحتياطي",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFFD4AF37)
                         )
                         IconButton(onClick = { showSettingsDialog = false }) {
-                            Icon(Icons.Default.Close, contentDescription = "إغلاق")
+                            Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
                         }
                     }
 
                     Text(
                         text = "يمكنك تصدير بطاقاتك الحالية في ملف وحفظه لتتمكن من استيرادها لاحقاً في أي هاتف آخر بسهولة.",
                         fontSize = 14.sp,
-                        color = Color(0xFF666666),
+                        color = Color.White.copy(alpha = 0.8f),
                         lineHeight = 22.sp
                     )
 
@@ -592,12 +976,12 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = Color.White
+                            containerColor = Color(0xFFD4AF37),
+                            contentColor = Color.Black
                         ),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.Black)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("تصدير البطاقات (نسخ احتياطي)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
@@ -610,15 +994,112 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                            contentColor = MaterialTheme.colorScheme.primary
+                            containerColor = Color.White.copy(alpha = 0.12f),
+                            contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("استيراد البطاقات (استعادة النسخة)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // --- Supabase Remote Messages Configuration Section ---
+                    Spacer(modifier = Modifier.height(1.dp).fillMaxWidth().background(Color.White.copy(alpha = 0.15f)))
+
+                    Text(
+                        text = "نظام الرسائل المركزي (Supabase)",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD4AF37)
+                    )
+
+                    var supabaseUrlInput by remember { mutableStateOf(com.example.data.SupabaseManager.getSupabaseUrl(context)) }
+                    var supabaseKeyInput by remember { mutableStateOf(com.example.data.SupabaseManager.getSupabaseAnonKey(context)) }
+                    val isRealtimeConnected by com.example.data.SupabaseManager.isRealtimeConnected.collectAsState()
+                    val errorState by com.example.data.SupabaseManager.errorState.collectAsState()
+
+                    OutlinedTextField(
+                        value = supabaseUrlInput,
+                        onValueChange = { supabaseUrlInput = it },
+                        label = { Text("رابط مشروع Supabase (URL)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFD4AF37),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                            focusedLabelColor = Color(0xFFD4AF37),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = supabaseKeyInput,
+                        onValueChange = { supabaseKeyInput = it },
+                        label = { Text("مفتاح المشروع العام (Anon Key)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFFD4AF37),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                            focusedLabelColor = Color(0xFFD4AF37),
+                            unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Connection Status
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isRealtimeConnected) Color(0xFF4CAF50) else Color(0xFFF44336))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isRealtimeConnected) "متصل بالبث المباشر" else "غير متصل بالبث",
+                                fontSize = 12.sp,
+                                color = if (isRealtimeConnected) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Save Button
+                        Button(
+                            onClick = {
+                                com.example.data.SupabaseManager.updateConfig(context, supabaseUrlInput, supabaseKeyInput)
+                                Toast.makeText(context, "تم حفظ وتحديث اتصال Supabase", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFD4AF37),
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("حفظ الاتصال", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                    }
+
+                    if (errorState != null) {
+                        Text(
+                            text = errorState!!,
+                            color = Color(0xFFF44336),
+                            fontSize = 11.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -628,10 +1109,11 @@ fun QuranAppDashboard(
                         onClick = { showSettingsDialog = false },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFF5F5F5),
-                            contentColor = Color(0xFF555555)
+                            containerColor = Color.White.copy(alpha = 0.06f),
+                            contentColor = Color.White.copy(alpha = 0.8f)
                         ),
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
                     ) {
                         Text("إغلاق", fontSize = 15.sp)
                     }
@@ -650,13 +1132,13 @@ fun QuranAppDashboard(
     if (showActionMenuDialog && selectedCardForActions != null) {
         val currentCard = selectedCardForActions!!
         Dialog(onDismissRequest = { showActionMenuDialog = false }) {
+            ImmersiveDialogEffect()
             Surface(
                 modifier = Modifier
                     .fillMaxWidth(0.9f)
-                    .shadow(16.dp, RoundedCornerShape(24.dp))
-                    .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
+                    .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White
+                color = Color(0xFF042416).copy(alpha = 0.95f)
             ) {
                 Column(
                     modifier = Modifier
@@ -670,13 +1152,13 @@ fun QuranAppDashboard(
                             text = "خيارات البطاقة",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFFD4AF37)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = currentCard.title,
                             fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.secondary,
+                            color = Color.White.copy(alpha = 0.7f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -693,12 +1175,12 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                            contentColor = MaterialTheme.colorScheme.primary
+                            containerColor = Color(0xFFD4AF37),
+                            contentColor = Color.Black
                         ),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Black)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("تعديل البطاقة", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
@@ -711,13 +1193,13 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFF9F9F9),
-                            contentColor = Color(0xFF444444)
+                            containerColor = Color.White.copy(alpha = 0.12f),
+                            contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
                     ) {
-                        Icon(Icons.Default.ArrowUpward, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ArrowUpward, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("تحريك لأعلى ترتيباً", fontWeight = FontWeight.Medium, fontSize = 14.sp)
                     }
@@ -730,13 +1212,13 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFF9F9F9),
-                            contentColor = Color(0xFF444444)
+                            containerColor = Color.White.copy(alpha = 0.12f),
+                            contentColor = Color.White
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
                     ) {
-                        Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.ArrowDownward, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("تحريك لأسفل ترتيباً", fontWeight = FontWeight.Medium, fontSize = 14.sp)
                     }
@@ -749,12 +1231,13 @@ fun QuranAppDashboard(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.08f),
-                            contentColor = MaterialTheme.colorScheme.error
+                            containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                            contentColor = Color(0xFFEF5350)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.35f))
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFFEF5350))
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("حذف البطاقة", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
@@ -766,10 +1249,11 @@ fun QuranAppDashboard(
                         onClick = { showActionMenuDialog = false },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFAFAFA),
-                            contentColor = Color(0xFF888888)
+                            containerColor = Color.White.copy(alpha = 0.06f),
+                            contentColor = Color.White.copy(alpha = 0.8f)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
                     ) {
                         Text("إلغاء", fontWeight = FontWeight.Medium)
                     }
@@ -784,48 +1268,72 @@ fun QuranAppDashboard(
 @Composable
 fun QuranCardWideRowItem(
     card: QuranCard,
+    isPlaying: Boolean = false,
     onCardClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = Modifier
+    Box(
+        modifier = modifier
             .fillMaxWidth()
-            .testTag("card_item_${card.id}")
-            .shadow(2.dp, RoundedCornerShape(16.dp))
+            .height(86.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .border(
+                BorderStroke(
+                    width = 1.2.dp,
+                    color = if (isPlaying) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.22f)
+                ),
+                shape = RoundedCornerShape(16.dp)
+            )
             .combinedClickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
                 onClick = onCardClick,
                 onLongClick = onLongClick
-            ),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        ),
-        border = BorderStroke(
-            width = 1.2.dp,
-            color = Color(0xFFF2F2F0)
-        )
+            )
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.CenterStart
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 22.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Display only the Beautiful Title clearly without any distracting subtitle/clipboard texts!
-            Text(
-                text = card.title,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
-            )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DragHandle,
+                    contentDescription = "سحب للترتيب",
+                    tint = if (isPlaying) Color(0xFFD4AF37).copy(alpha = 0.7f) else Color.White.copy(alpha = 0.45f),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                
+                if (isPlaying) {
+                    Icon(
+                        imageVector = Icons.Default.VolumeUp,
+                        contentDescription = "جاري التشغيل",
+                        tint = Color(0xFFD4AF37),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                }
+                
+                Text(
+                    text = card.title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isPlaying) Color(0xFFD4AF37) else Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Beautiful three dots action trigger (for editing, deleting, moving)
             IconButton(
                 onClick = onLongClick,
                 modifier = Modifier.size(36.dp)
@@ -833,7 +1341,7 @@ fun QuranCardWideRowItem(
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "المزيد من الخيارات",
-                    tint = Color(0xFF999999),
+                    tint = if (isPlaying) Color(0xFFD4AF37).copy(alpha = 0.9f) else Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -858,6 +1366,23 @@ fun AddEditCardDialogSimple(
     
     var selectedReciter by remember { mutableStateOf(card?.reciterIdentifier) }
     
+    val matchedReciter = remember(selectedReciter, reciters) {
+        if (selectedReciter == null) null
+        else {
+            reciters.find { r ->
+                r.identifier == selectedReciter || r.styles.any { s -> s.serverUrl == selectedReciter }
+            }
+        }
+    }
+    val tajweedStyle = remember(matchedReciter) {
+        matchedReciter?.styles?.firstOrNull { it.name.contains("مجود") || it.name.contains("تجويد") }
+    }
+    val tilawahStyle = remember(matchedReciter) {
+        matchedReciter?.styles?.firstOrNull { !it.name.contains("مجود") && !it.name.contains("تجويد") }
+            ?: matchedReciter?.styles?.firstOrNull()
+    }
+    val hasBothStyles = tajweedStyle != null && tilawahStyle != null
+    
     var expandedReciter by remember { mutableStateOf(false) }
     var expandedSurah by remember { mutableStateOf(false) }
     
@@ -872,6 +1397,8 @@ fun AddEditCardDialogSimple(
             card.clipboardText
         } else null
     ) }
+
+    var imageUri by remember { mutableStateOf(card?.imageUri) }
 
     val pickAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -889,18 +1416,34 @@ fun AddEditCardDialogSimple(
         }
     }
 
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                // Ignore if not supported
+            }
+            imageUri = it.toString()
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        ImmersiveDialogEffect()
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
                 .padding(vertical = 24.dp)
-                .shadow(16.dp, RoundedCornerShape(24.dp))
-                .border(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
+                .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
             shape = RoundedCornerShape(24.dp),
-            color = Color.White
+            color = Color(0xFF042416).copy(alpha = 0.95f)
         ) {
             Column(
                 modifier = Modifier
@@ -919,18 +1462,18 @@ fun AddEditCardDialogSimple(
                             text = if (card == null) "إضافة بطاقة جديدة" else "تعديل البطاقة",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFFD4AF37)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
                             onClick = { pickAudioLauncher.launch(arrayOf("audio/*")) },
                             modifier = Modifier.size(28.dp).testTag("pick_audio_button")
                         ) {
-                            Icon(Icons.Default.Settings, contentDescription = "اختر ملف صوتي", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.Settings, contentDescription = "اختر ملف صوتي", tint = Color(0xFFD4AF37), modifier = Modifier.size(20.dp))
                         }
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "إغلاق")
+                        Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
                     }
                 }
 
@@ -939,16 +1482,18 @@ fun AddEditCardDialogSimple(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("اسم البطاقة") },
-                    placeholder = { Text("مثال: سورة الكهف - القارئ فلان") },
+                    placeholder = { Text("سيتم ملؤه تلقائياً أو اكتب الاسم هنا...") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("title_input"),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = Color(0xFFE5E5E5),
-                        focusedLabelColor = MaterialTheme.colorScheme.primary,
-                        unfocusedLabelColor = Color(0xFF777777)
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFD4AF37),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                        focusedLabelColor = Color(0xFFD4AF37),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
                     ),
                     shape = RoundedCornerShape(14.dp)
                 )
@@ -957,12 +1502,13 @@ fun AddEditCardDialogSimple(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFE8F5E9), RoundedCornerShape(14.dp))
+                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
                             .padding(16.dp)
                     ) {
                         Text(
                             text = "تم اختيار ملف صوتي من الجهاز",
-                            color = Color(0xFF2E7D32),
+                            color = Color(0xFFD4AF37),
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -971,40 +1517,92 @@ fun AddEditCardDialogSimple(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.2.dp, Color(0xFFE5E5E5), RoundedCornerShape(14.dp))
-                            .clickable { expandedReciter = true }
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = reciters.find { it.identifier == selectedReciter }?.name ?: "اختر القارئ",
-                            color = if (selectedReciter != null) Color.Black else Color(0xFF777777)
-                        )
-                        DropdownMenu(
-                            expanded = expandedReciter,
-                            onDismissRequest = { 
-                                expandedReciter = false
-                                searchReciter = ""
-                            },
-                            modifier = Modifier.fillMaxWidth(0.8f).heightIn(max = 300.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = searchReciter,
-                                onValueChange = { searchReciter = it },
-                                placeholder = { Text("بحث عن قارئ...", fontSize = 13.sp) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp)
+                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                            .border(
+                                1.2.dp,
+                                Color.White.copy(alpha = 0.22f),
+                                RoundedCornerShape(14.dp)
                             )
-                            reciters.filter { it.name.contains(searchReciter, ignoreCase = true) }.forEach { reciter ->
+                            .clickable { expandedReciter = true }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = reciters.find { it.identifier == selectedReciter || it.styles.any { s -> s.serverUrl == selectedReciter } }?.name ?: "اختر القارئ",
+                                color = if (selectedReciter != null) Color.White else Color.White.copy(alpha = 0.4f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "فتح القائمة",
+                                tint = Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    if (hasBothStyles) {
+                        var expandedStyle by remember { mutableStateOf(false) }
+                        val currentStyleName = if (selectedReciter == tajweedStyle?.serverUrl) "تجويد" else "تلاوة"
+                        
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                                .border(
+                                    1.2.dp,
+                                    Color.White.copy(alpha = 0.22f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable { expandedStyle = true }
+                                .padding(16.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "تلاوة: ",
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                    Text(
+                                        text = currentStyleName,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "تغيير النوع",
+                                    tint = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                            
+                            DropdownMenu(
+                                expanded = expandedStyle,
+                                onDismissRequest = { expandedStyle = false },
+                                modifier = Modifier
+                                    .background(Color(0xFF042416))
+                                    .border(1.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            ) {
                                 DropdownMenuItem(
-                                    text = { Text(reciter.name) },
+                                    text = { Text("تلاوة (مرتل)", color = Color.White) },
                                     onClick = {
-                                        selectedReciter = reciter.identifier
-                                        expandedReciter = false
-                                        searchReciter = ""
+                                        tilawahStyle?.let { selectedReciter = it.serverUrl }
+                                        expandedStyle = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("تجويد (مجود)", color = Color.White) },
+                                    onClick = {
+                                        tajweedStyle?.let { selectedReciter = it.serverUrl }
+                                        expandedStyle = false
                                     }
                                 )
                             }
@@ -1015,43 +1613,30 @@ fun AddEditCardDialogSimple(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .border(1.2.dp, Color(0xFFE5E5E5), RoundedCornerShape(14.dp))
-                            .clickable { expandedSurah = true }
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = surahs.find { it.number.toString() == selectedSurahNumber }?.name ?: "اختر السورة",
-                            color = Color.Black
-                        )
-                        DropdownMenu(
-                            expanded = expandedSurah,
-                            onDismissRequest = { 
-                                expandedSurah = false
-                                searchSurah = ""
-                            },
-                            modifier = Modifier.fillMaxWidth(0.8f).heightIn(max = 300.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = searchSurah,
-                                onValueChange = { searchSurah = it },
-                                placeholder = { Text("بحث عن سورة...", fontSize = 13.sp) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 14.sp),
-                                singleLine = true,
-                                shape = RoundedCornerShape(8.dp)
+                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                            .border(
+                                1.2.dp,
+                                Color.White.copy(alpha = 0.22f),
+                                RoundedCornerShape(14.dp)
                             )
-                            surahs.filter { it.name.contains(searchSurah, ignoreCase = true) }.forEach { surah ->
-                                DropdownMenuItem(
-                                    text = { Text(surah.name) },
-                                    onClick = {
-                                        selectedSurahNumber = surah.number.toString()
-                                        expandedSurah = false
-                                        searchSurah = ""
-                                    }
-                                )
-                            }
+                            .clickable { expandedSurah = true }
+                            .padding(16.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = surahs.find { it.number.toString() == selectedSurahNumber }?.name ?: "اختر السورة",
+                                color = if (selectedSurahNumber.isNotEmpty()) Color.White else Color.White.copy(alpha = 0.4f)
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "فتح القائمة",
+                                tint = Color.White.copy(alpha = 0.6f)
+                            )
                         }
                     }
                 }
@@ -1068,7 +1653,7 @@ fun AddEditCardDialogSimple(
                         Icon(
                             imageVector = if (expandedSettings) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFFD4AF37),
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1076,7 +1661,7 @@ fun AddEditCardDialogSimple(
                             text = "الإعدادات الإضافية (تشغيل عند وصول إشعار)",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color(0xFFD4AF37)
                         )
                     }
 
@@ -1089,7 +1674,7 @@ fun AddEditCardDialogSimple(
                                     Toast.makeText(context, "الرجاء تفعيل الصلاحية ثم العودة للتطبيق", Toast.LENGTH_LONG).show()
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f), contentColor = Color.White)
                             ) {
                                 Text("تفعيل صلاحية قراءة الإشعارات", fontSize = 13.sp)
                             }
@@ -1101,12 +1686,20 @@ fun AddEditCardDialogSimple(
                                 placeholder = { Text("مثال: سورة البقرة") },
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                                 singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedBorderColor = Color(0xFFD4AF37),
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                                    focusedLabelColor = Color(0xFFD4AF37),
+                                    unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
+                                ),
                                 shape = RoundedCornerShape(14.dp)
                             )
                             Text(
                                 text = "سيتم تشغيل هذه التلاوة تلقائياً عندما يصل إشعار يحتوي على هذه الكلمة.",
                                 fontSize = 11.sp,
-                                color = Color.Gray,
+                                color = Color.White.copy(alpha = 0.6f),
                                 modifier = Modifier.padding(top = 4.dp, start = 8.dp)
                             )
                         }
@@ -1122,9 +1715,10 @@ fun AddEditCardDialogSimple(
                         onClick = { onDismiss() },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFF5F5F5),
-                            contentColor = Color(0xFF555555)
+                            containerColor = Color.White.copy(alpha = 0.06f),
+                            contentColor = Color.White.copy(alpha = 0.8f)
                         ),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text("إلغاء", fontSize = 15.sp)
@@ -1146,8 +1740,8 @@ fun AddEditCardDialogSimple(
                             .weight(1.5f)
                             .testTag("save_button"),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
+                            containerColor = Color(0xFFD4AF37),
+                            contentColor = Color.Black
                         ),
                         shape = RoundedCornerShape(14.dp)
                     ) {
@@ -1158,6 +1752,34 @@ fun AddEditCardDialogSimple(
                 }
             }
         }
+    }
+
+    if (expandedReciter) {
+        val recitersItems = remember(reciters) {
+            reciters.map { SelectionItem(it.identifier, it.name) }
+        }
+        FastSelectionDialog(
+            title = "اختر القارئ",
+            searchPlaceholder = "بحث عن قارئ...",
+            items = recitersItems,
+            selectedId = matchedReciter?.identifier ?: selectedReciter,
+            onDismiss = { expandedReciter = false },
+            onSelect = { selectedReciter = it }
+        )
+    }
+
+    if (expandedSurah) {
+        val surahsItems = remember(surahs) {
+            surahs.map { SelectionItem(it.number.toString(), it.name) }
+        }
+        FastSelectionDialog(
+            title = "اختر السورة",
+            searchPlaceholder = "بحث عن سورة...",
+            items = surahsItems,
+            selectedId = selectedSurahNumber,
+            onDismiss = { expandedSurah = false },
+            onSelect = { selectedSurahNumber = it }
+        )
     }
 }
 
@@ -1176,22 +1798,41 @@ fun LinkingDialog(
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
     
     if (showQrCode) {
-        QrCodeDisplayDialog(deviceId = deviceId) { showQrCode = false }
+        val currentSecret = remember {
+            val repo = com.example.data.DeviceLinkRepository(context)
+            repo.getSharedSecret() ?: com.example.data.CryptoHelper.generateSharedSecret().also {
+                repo.setSharedSecret(it)
+                com.example.data.MqttManager.setSharedSecret(it)
+            }
+        }
+        LaunchedEffect(Unit) {
+            SyncManager.startWaitingForPair()
+        }
+        QrCodeDisplayDialog(deviceId = deviceId, sharedSecret = currentSecret) { 
+            showQrCode = false 
+            SyncManager.stopWaitingForPair()
+        }
     }
     
     if (showScanner) {
         QrScannerDialog(
             onQrScanned = { result ->
-                remoteId = result
-                SyncManager.setLinkedId(context, result.trim())
+                // النص الممسوح يكون بصيغة "deviceId|sharedSecret"
+                val parts = result.trim().split("|")
+                val scannedDeviceId = parts.getOrNull(0) ?: result.trim()
+                val scannedSecret = parts.getOrNull(1)
+
+                remoteId = scannedDeviceId
+                SyncManager.setLinkedId(context, scannedDeviceId, scannedSecret)
                 showScanner = false
-                Toast.makeText(context, "تم التعرف والربط تلقائياً: $result", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "تم التعرف والربط تلقائياً: $scannedDeviceId", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showScanner = false }
         )
     }
     
     Dialog(onDismissRequest = onDismiss) {
+        ImmersiveDialogEffect()
         val isOptimizing = remember {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -1204,10 +1845,9 @@ fun LinkingDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.92f)
-                .shadow(16.dp, RoundedCornerShape(24.dp))
-                .border(1.2.dp, Color(0xFF2E7D32).copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
+                .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
             shape = RoundedCornerShape(24.dp),
-            color = Color.White
+            color = Color(0xFF042416).copy(alpha = 0.95f)
         ) {
             Column(
                 modifier = Modifier
@@ -1225,7 +1865,7 @@ fun LinkingDialog(
                         Icon(
                             Icons.Default.Folder,
                             contentDescription = null,
-                            tint = Color(0xFF2E7D32),
+                            tint = Color(0xFFD4AF37),
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
@@ -1233,11 +1873,11 @@ fun LinkingDialog(
                             text = "إعدادات الربط",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2E7D32)
+                            color = Color(0xFFD4AF37)
                         )
                     }
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "إغلاق")
+                        Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
                     }
                 }
 
@@ -1248,21 +1888,21 @@ fun LinkingDialog(
                         Text(
                             text = "معرف جهازك الفريد (ثابت لجهازك):",
                             fontSize = 14.sp,
-                            color = Color(0xFF666666)
+                            color = Color.White.copy(alpha = 0.7f)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFFF1F8E9),
+                            color = Color.White.copy(alpha = 0.08f),
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFFC8E6C9))
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
                         ) {
                             Text(
                                 text = deviceId,
                                 modifier = Modifier.padding(12.dp),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32),
+                                color = Color(0xFFD4AF37),
                                 textAlign = TextAlign.Center
                             )
                         }
@@ -1277,10 +1917,11 @@ fun LinkingDialog(
                                 onClick = { showQrCode = true },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE8F5E9), contentColor = Color(0xFF2E7D32)),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.12f), contentColor = Color.White),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
                                 contentPadding = PaddingValues(12.dp)
                             ) {
-                                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("عرض الرمز", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
@@ -1296,10 +1937,11 @@ fun LinkingDialog(
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE3F2FD), contentColor = Color(0xFF1976D2)),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2).copy(alpha = 0.2f), contentColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFF1976D2).copy(alpha = 0.4f)),
                                 contentPadding = PaddingValues(12.dp)
                             ) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("مسح الرمز", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
@@ -1310,19 +1952,23 @@ fun LinkingDialog(
                         Text(
                             text = "أدخل معرف الجهاز الآخر للربط:",
                             fontSize = 14.sp,
-                            color = Color(0xFF666666)
+                            color = Color.White.copy(alpha = 0.7f)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         OutlinedTextField(
                             value = remoteId,
                             onValueChange = { remoteId = it },
-                            placeholder = { Text("أدخل ID الشخص الآخر هنا") },
+                            placeholder = { Text("أدخل ID الشخص الآخر هنا", color = Color.White.copy(alpha = 0.4f)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             shape = RoundedCornerShape(14.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF2E7D32),
-                                unfocusedBorderColor = Color(0xFFE5E5E5)
+                                focusedBorderColor = Color(0xFFD4AF37),
+                                unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedLabelColor = Color(0xFFD4AF37),
+                                unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
                             )
                         )
                     }
@@ -1336,8 +1982,8 @@ fun LinkingDialog(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF2E7D32),
-                                contentColor = Color.White
+                                containerColor = Color(0xFFD4AF37),
+                                contentColor = Color.Black
                             ),
                             shape = RoundedCornerShape(14.dp)
                         ) {
@@ -1351,9 +1997,9 @@ fun LinkingDialog(
                             item {
                                 Surface(
                                     modifier = Modifier.fillMaxWidth(),
-                                    color = Color(0xFFFFFDE7),
+                                    color = Color(0xFFFBC02D).copy(alpha = 0.15f),
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFFF59D))
+                                    border = BorderStroke(1.dp, Color(0xFFFBC02D).copy(alpha = 0.4f))
                                 ) {
                                     Column(
                                         modifier = Modifier.padding(12.dp),
@@ -1373,14 +2019,14 @@ fun LinkingDialog(
                                                 text = "استقرار المزامنة في الخلفية",
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF5D4037)
+                                                color = Color(0xFFFBC02D)
                                             )
                                         }
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = "لضمان بقاء المزامنة نشطة واستقبل إشعارات التشغيل حتى لو كان التطبيق مغلقاً لساعات، يُنصح باستثناء التطبيق من قيود تحسين البطارية.",
                                             fontSize = 12.sp,
-                                            color = Color(0xFF795548),
+                                            color = Color.White.copy(alpha = 0.8f),
                                             lineHeight = 18.sp,
                                             textAlign = TextAlign.Center
                                         )
@@ -1419,7 +2065,7 @@ fun LinkingDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.Transparent,
-                                    contentColor = Color.Red
+                                    contentColor = Color(0xFFEF5350)
                                 ),
                                 shape = RoundedCornerShape(14.dp)
                             ) {
@@ -1432,7 +2078,7 @@ fun LinkingDialog(
                         Text(
                             text = "عند تفعيل الربط، ستصلك إشعارات عند تشغيل الشخص الآخر لأي سورة من التطبيق.",
                             fontSize = 12.sp,
-                            color = Color(0xFF999999),
+                            color = Color.White.copy(alpha = 0.5f),
                             lineHeight = 18.sp,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth()
@@ -1443,4 +2089,182 @@ fun LinkingDialog(
         }
     }
 }
+
+data class SelectionItem(
+    val id: String,
+    val name: String
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun FastSelectionDialog(
+    title: String,
+    searchPlaceholder: String,
+    items: List<SelectionItem>,
+    selectedId: String?,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredItems = remember(searchQuery, items) {
+        if (searchQuery.isBlank()) {
+            items
+        } else {
+            items.filter { it.name.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        ImmersiveDialogEffect()
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .fillMaxHeight(0.75f)
+                .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF042416)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD4AF37)
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Search field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(searchPlaceholder, color = Color.White.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFFD4AF37),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.25f),
+                        focusedLabelColor = Color(0xFFD4AF37),
+                        unfocusedLabelColor = Color.White.copy(alpha = 0.6f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp)
+                ) {
+                    items(filteredItems) { item ->
+                        val isSelected = item.id == selectedId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) Color(0xFFD4AF37).copy(alpha = 0.15f)
+                                    else Color.White.copy(alpha = 0.05f)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.1f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable {
+                                    onSelect(item.id)
+                                    onDismiss()
+                                }
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = item.name,
+                                fontSize = 16.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color(0xFFD4AF37) else Color.White
+                            )
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.VolumeUp,
+                                    contentDescription = "محدد",
+                                    tint = Color(0xFFD4AF37),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (filteredItems.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "لا توجد نتائج مطابقة",
+                                    color = Color.White.copy(alpha = 0.5f),
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ImmersiveDialogEffect() {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(view) {
+        val window = (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+        if (window != null) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                window.setDecorFitsSystemWindows(false)
+                window.insetsController?.hide(
+                    android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars()
+                )
+                window.insetsController?.systemBarsBehavior =
+                    android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                )
+            }
+        }
+        onDispose {}
+    }
+}
+
 

@@ -7,6 +7,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
 fun sendQuranNotification(context: Context, title: String, text: String) {
+    createNotificationChannel(context)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
                 context,
@@ -19,7 +20,7 @@ fun sendQuranNotification(context: Context, title: String, text: String) {
     }
 
     val builder = NotificationCompat.Builder(context, "QURAN_NOTIFICATIONS")
-        .setSmallIcon(R.mipmap.ic_launcher)
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
         .setContentTitle(title)
         .setContentText(text)
         .setPriority(NotificationCompat.PRIORITY_HIGH)

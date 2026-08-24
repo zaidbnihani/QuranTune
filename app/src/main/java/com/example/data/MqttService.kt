@@ -15,12 +15,14 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.sendQuranNotification
 
 class MqttService : Service() {
 
     private val CHANNEL_ID = "mqtt_sync_channel"
     private val NOTIFICATION_ID = 2
     private var syncListener: ((String, String?, String?) -> Unit)? = null
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -30,8 +32,39 @@ class MqttService : Service() {
             if (deviceRepo.isLinked()) {
                 val deviceId = deviceRepo.getDeviceId()
                 val linkedId = deviceRepo.getLinkedId()
+                MqttManager.setSharedSecret(deviceRepo.getSharedSecret())
                 MqttManager.initialize(deviceId, linkedId)
                 MqttManager.connect()
+            }
+        }
+    }
+
+    private fun registerNetworkCallback() {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                Log.d("MqttService", "Network became available, reconnecting MQTT...")
+                val deviceRepo = DeviceLinkRepository(this@MqttService)
+                if (deviceRepo.isLinked()) {
+                    MqttManager.connect()
+                }
+            }
+        }
+        try {
+            val builder = android.net.NetworkRequest.Builder()
+            connectivityManager.registerNetworkCallback(builder.build(), networkCallback!!)
+        } catch (e: Exception) {
+            Log.e("MqttService", "Failed to register NetworkCallback", e)
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        networkCallback?.let {
+            try {
+                connectivityManager.unregisterNetworkCallback(it)
+            } catch (e: Exception) {
+                Log.e("MqttService", "Failed to unregister NetworkCallback", e)
             }
         }
     }
@@ -47,8 +80,13 @@ class MqttService : Service() {
             @Suppress("DEPRECATION")
             addAction(android.net.ConnectivityManager.CONNECTIVITY_ACTION)
         }
-        registerReceiver(receiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(receiver, filter)
+        }
         scheduleRepeatingKeepAlive()
+        registerNetworkCallback()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -60,6 +98,7 @@ class MqttService : Service() {
         val deviceId = deviceRepo.getDeviceId()
         val linkedId = deviceRepo.getLinkedId()
         
+        MqttManager.setSharedSecret(deviceRepo.getSharedSecret())
         MqttManager.initialize(deviceId, linkedId)
         
         // Handle alarm keep alive triggers
@@ -89,9 +128,9 @@ class MqttService : Service() {
                     val message = "الجهاز الآخر: $status $title"
                     updateForegroundNotification(message)
                     
-                    // Show a high priority heads-up alert for "play" events
+                    // Show a high priority heads-up alert for "play" events from the linked device
                     if (type == "play") {
-                        com.example.sendQuranNotification(
+                        sendQuranNotification(
                             this,
                             "تزامن المصحف",
                             message
@@ -187,6 +226,7 @@ class MqttService : Service() {
 
     override fun onDestroy() {
         Log.d("MqttService", "MqttService destroyed")
+        unregisterNetworkCallback()
         try {
             unregisterReceiver(receiver)
         } catch (e: Exception) {

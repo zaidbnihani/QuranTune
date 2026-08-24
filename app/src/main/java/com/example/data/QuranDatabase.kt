@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [QuranCard::class], version = 3, exportSchema = false)
+@Database(entities = [QuranCard::class], version = 4, exportSchema = false)
 abstract class QuranDatabase : RoomDatabase() {
     abstract fun quranCardDao(): QuranCardDao
 
@@ -23,20 +23,31 @@ abstract class QuranDatabase : RoomDatabase() {
             val MIGRATION_1_3 = object : androidx.room.migration.Migration(1, 3) {
                 override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { migrateTable(db) }
             }
+            val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { migrateTable(db) }
+            }
+            val MIGRATION_1_4 = object : androidx.room.migration.Migration(1, 4) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { migrateTable(db) }
+            }
+            val MIGRATION_2_4 = object : androidx.room.migration.Migration(2, 4) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { migrateTable(db) }
+            }
             
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     QuranDatabase::class.java,
                     "quran_launcher_db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3).build()
+                                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_1_3, MIGRATION_3_4, MIGRATION_1_4, MIGRATION_2_4)
+                .fallbackToDestructiveMigration(true)
+                .build()
                 INSTANCE = instance
                 instance
             }
         }
         
         private fun migrateTable(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-            db.execSQL("CREATE TABLE IF NOT EXISTS `quran_cards_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `clipboardText` TEXT NOT NULL, `imageUri` TEXT, `presetResName` TEXT, `reciterIdentifier` TEXT, `notificationTriggerWord` TEXT, `sortOrder` INTEGER NOT NULL DEFAULT 0, `timestamp` INTEGER NOT NULL DEFAULT 0)")
+            db.execSQL("CREATE TABLE IF NOT EXISTS `quran_cards_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, `clipboardText` TEXT NOT NULL, `imageUri` TEXT, `presetResName` TEXT, `reciterIdentifier` TEXT, `notificationTriggerWord` TEXT, `youtubeUrl` TEXT, `sortOrder` INTEGER NOT NULL DEFAULT 0, `timestamp` INTEGER NOT NULL DEFAULT 0)")
             
             val cursor = db.query("PRAGMA table_info(quran_cards)")
             val columns = mutableListOf<String>()
@@ -45,7 +56,7 @@ abstract class QuranDatabase : RoomDatabase() {
             }
             cursor.close()
             
-            val validCols = setOf("id", "title", "clipboardText", "imageUri", "presetResName", "reciterIdentifier", "notificationTriggerWord", "sortOrder", "timestamp")
+            val validCols = setOf("id", "title", "clipboardText", "imageUri", "presetResName", "reciterIdentifier", "notificationTriggerWord", "youtubeUrl", "sortOrder", "timestamp")
             val commonColumns = columns.filter { validCols.contains(it) }.joinToString(", ")
             
             if (commonColumns.isNotEmpty()) {

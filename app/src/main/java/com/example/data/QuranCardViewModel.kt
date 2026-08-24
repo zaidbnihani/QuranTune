@@ -17,7 +17,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 
 data class SurahItem(val number: Int, val name: String, val englishName: String)
-data class QuranReciter(val identifier: String, val name: String, val englishName: String)
+data class RecitationStyle(val name: String, val serverUrl: String)
+data class QuranReciter(
+    val identifier: String, 
+    val name: String, 
+    val englishName: String,
+    val styles: List<RecitationStyle> = emptyList()
+)
 
 val builtInSurahs = listOf(
     SurahItem(-1, "أذكار الصباح", "Morning Adhkar"),
@@ -140,17 +146,29 @@ val builtInSurahs = listOf(
 )
 
 val builtInReciters = listOf(
-    QuranReciter("https://server8.mp3quran.net/afs/", "مشاري راشد العفاسي", "Mishary Rashid Alafasy"),
-    QuranReciter("https://server7.mp3quran.net/basit/", "عبد الباسط عبد الصمد", "Abdul Basit (Murattal)"),
-    QuranReciter("https://server11.mp3quran.net/a_jabr/", "علي جابر", "Ali Jaber"),
-    QuranReciter("https://server10.mp3quran.net/minsh/", "محمد صديق المنشاوي", "Mohamed Siddiq al-Minshawi"),
-    QuranReciter("https://server11.mp3quran.net/sds/", "عبد الرحمن السديس", "Abdur-Rahman as-Sudais"),
-    QuranReciter("https://server13.mp3quran.net/husr/", "محمود خليل الحصري", "Mahmoud Khalil Al-Husary"),
-    QuranReciter("https://server12.mp3quran.net/maher/", "ماهر المعيقلي", "Maher Al Muaiqly"),
-    QuranReciter("https://server11.mp3quran.net/shatri/", "أبو بكر الشاطري", "Abu Bakr Ash-Shaatree"),
-    QuranReciter("https://server10.mp3quran.net/ajm/", "أحمد بن علي العجمي", "Ahmed ibn Ali al-Ajamy"),
-    QuranReciter("https://server7.mp3quran.net/s_gmd/", "سعد الغامدي", "Saad al-Ghamdi"),
-    QuranReciter("https://server11.mp3quran.net/yasser/", "ياسر الدوسري", "Yasser Al-Dosari")
+    QuranReciter("https://server8.mp3quran.net/afs/", "مشاري راشد العفاسي", "Mishary Rashid Alafasy", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server8.mp3quran.net/afs/"))),
+    QuranReciter("https://server7.mp3quran.net/basit/", "عبد الباسط عبد الصمد", "Abdul Basit (Murattal)", listOf(
+        RecitationStyle("حفص عن عاصم - مرتل", "https://server7.mp3quran.net/basit/"),
+        RecitationStyle("المصحف المجود", "https://server7.mp3quran.net/basit/Almusshaf-Al-Mojawwad/")
+    )),
+    QuranReciter("https://server11.mp3quran.net/a_jabr/", "علي جابر", "Ali Jaber", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server11.mp3quran.net/a_jabr/"))),
+    QuranReciter("https://server10.mp3quran.net/minsh/", "محمد صديق المنشاوي", "Mohamed Siddiq al-Minshawi", listOf(
+        RecitationStyle("حفص عن عاصم - مرتل", "https://server10.mp3quran.net/minsh/"),
+        RecitationStyle("المصحف المجود", "https://server10.mp3quran.net/minsh/Almusshaf-Al-Mojawwad/")
+    )),
+    QuranReciter("https://server11.mp3quran.net/sds/", "عبد الرحمن السديس", "Abdur-Rahman as-Sudais", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server11.mp3quran.net/sds/"))),
+    QuranReciter("https://server13.mp3quran.net/husr/", "محمود خليل الحصري", "Mahmoud Khalil Al-Husary", listOf(
+        RecitationStyle("حفص عن عاصم - مرتل", "https://server13.mp3quran.net/husr/"),
+        RecitationStyle("المصحف المجود", "https://server13.mp3quran.net/husr/Almusshaf-Al-Mojawwad/")
+    )),
+    QuranReciter("https://server12.mp3quran.net/maher/", "ماهر المعيقلي", "Maher Al Muaiqly", listOf(
+        RecitationStyle("حفص عن عاصم - مرتل", "https://server12.mp3quran.net/maher/"),
+        RecitationStyle("المصحف المجود", "https://server12.mp3quran.net/maher/Almusshaf-Al-Mojawwad/")
+    )),
+    QuranReciter("https://server11.mp3quran.net/shatri/", "أبو بكر الشاطري", "Abu Bakr Ash-Shaatree", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server11.mp3quran.net/shatri/"))),
+    QuranReciter("https://server10.mp3quran.net/ajm/", "أحمد بن علي العجمي", "Ahmed ibn Ali al-Ajamy", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server10.mp3quran.net/ajm/"))),
+    QuranReciter("https://server7.mp3quran.net/s_gmd/", "سعد الغامدي", "Saad al-Ghamdi", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server7.mp3quran.net/s_gmd/"))),
+    QuranReciter("https://server11.mp3quran.net/yasser/", "ياسر الدوسري", "Yasser Al-Dosari", listOf(RecitationStyle("حفص عن عاصم - مرتل", "https://server11.mp3quran.net/yasser/")))
 )
 
 class QuranCardViewModel(application: Application) : AndroidViewModel(application) {
@@ -183,9 +201,16 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                     val obj = arr.getJSONObject(i)
                     val name = obj.getString("name")
                     val moshafArr = obj.getJSONArray("moshaf")
+                    val styles = mutableListOf<RecitationStyle>()
+                    for (j in 0 until moshafArr.length()) {
+                        val mObj = moshafArr.getJSONObject(j)
+                        val mName = mObj.getString("name")
+                        val mServer = mObj.getString("server")
+                        styles.add(RecitationStyle(mName, mServer))
+                    }
                     if (moshafArr.length() > 0) {
                         val server = moshafArr.getJSONObject(0).getString("server")
-                        fetched.add(QuranReciter(server, name, name))
+                        fetched.add(QuranReciter(server, name, name, styles))
                     }
                 }
                 if (fetched.isNotEmpty()) {
@@ -197,7 +222,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun addCard(title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?) {
+    fun addCard(title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null) {
         viewModelScope.launch {
             val card = QuranCard(
                 title = title,
@@ -205,14 +230,17 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                 imageUri = imageUri,
                 presetResName = presetResName,
                 reciterIdentifier = reciterIdentifier,
-                notificationTriggerWord = notificationTriggerWord
+                notificationTriggerWord = notificationTriggerWord,
+                youtubeUrl = youtubeUrl
             )
             repository.insertCard(card)
-            OfflineDownloader.download(getApplication(), reciterIdentifier, clipboardText)
+            if (youtubeUrl.isNullOrBlank()) {
+                OfflineDownloader.download(getApplication(), reciterIdentifier, clipboardText)
+            }
         }
     }
 
-    fun updateCard(card: QuranCard, title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?) {
+    fun updateCard(card: QuranCard, title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null) {
         viewModelScope.launch {
             val updated = card.copy(
                 title = title,
@@ -220,10 +248,13 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                 imageUri = imageUri,
                 presetResName = presetResName,
                 reciterIdentifier = reciterIdentifier,
-                notificationTriggerWord = notificationTriggerWord
+                notificationTriggerWord = notificationTriggerWord,
+                youtubeUrl = youtubeUrl
             )
             repository.updateCard(updated)
-            OfflineDownloader.download(getApplication(), reciterIdentifier, clipboardText)
+            if (youtubeUrl.isNullOrBlank()) {
+                OfflineDownloader.download(getApplication(), reciterIdentifier, clipboardText)
+            }
         }
     }
 
@@ -259,17 +290,17 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
-    fun playAudio(context: Context, reciterId: String?, surahNumber: String, title: String?, cardId: String? = null) {
-        QuranAudioPlayer.playAudio(context, reciterId, surahNumber, title, cardId)
+    fun playAudio(context: Context, reciterId: String?, surahNumber: String, title: String?, cardId: String? = null, youtubeUrl: String? = null) {
+        QuranAudioPlayer.playAudio(context, reciterId, surahNumber, title, cardId, youtubeUrl)
     }
 
     fun stopAudio() {
-        QuranAudioPlayer.stopAudio()
+        QuranAudioPlayer.stopAudio(true)
     }
 
     override fun onCleared() {
         super.onCleared()
-        QuranAudioPlayer.stopAudio()
+        QuranAudioPlayer.stopAudio(false)
     }
 
     fun moveCardUp(card: QuranCard) {
@@ -314,6 +345,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         presetResName = card.presetResName ?: "green",
                         reciterIdentifier = card.reciterIdentifier,
                         notificationTriggerWord = card.notificationTriggerWord,
+                        youtubeUrl = card.youtubeUrl,
                         sortOrder = maxSort + 1 + index,
                         timestamp = System.currentTimeMillis()
                     )
@@ -339,6 +371,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         put("presetResName", card.presetResName)
                         put("reciterIdentifier", card.reciterIdentifier)
                         put("notificationTriggerWord", card.notificationTriggerWord)
+                        put("youtubeUrl", card.youtubeUrl)
                         put("sortOrder", card.sortOrder)
                     }
                     jsonArray.put(jsonObj)
@@ -374,6 +407,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         val presetResName = if (obj.isNull("presetResName")) null else obj.optString("presetResName", "")
                         val reciterIdentifier = if (obj.isNull("reciterIdentifier")) null else obj.optString("reciterIdentifier", "")
                         val notificationTriggerWord = if (obj.isNull("notificationTriggerWord")) null else obj.optString("notificationTriggerWord", "")
+                        val youtubeUrl = if (obj.isNull("youtubeUrl")) null else obj.optString("youtubeUrl", "")
                         val sortOrder = obj.optInt("sortOrder", 0)
                         importedList.add(
                             QuranCard(
@@ -383,6 +417,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                                 presetResName = presetResName,
                                 reciterIdentifier = reciterIdentifier,
                                 notificationTriggerWord = notificationTriggerWord,
+                                youtubeUrl = youtubeUrl,
                                 sortOrder = sortOrder
                             )
                         )
