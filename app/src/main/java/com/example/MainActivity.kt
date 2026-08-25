@@ -177,6 +177,8 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var framesArray by remember { mutableStateOf<Array<ImageBitmap?>?>(null) }
     var currentIndex by remember { mutableIntStateOf(0) }
+    var isVideoReady by remember { mutableStateOf(false) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -191,7 +193,6 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
                 inDither = true
             }
 
-            // Decode first frame immediately to display without any delay
             try {
                 assetManager.open("bg_frames/${fileList[0]}").use { stream ->
                     BitmapFactory.decodeStream(stream, null, options)?.let {
@@ -201,7 +202,6 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
                 framesArray = decoded
             } catch (_: Exception) {}
 
-            // Decode all remaining frames progressively
             for (i in 0 until totalFrames) {
                 if (!isActive) break
                 if (decoded[i] == null) {
@@ -218,13 +218,14 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
         }
     }
 
-    LaunchedEffect(framesArray) {
+    LaunchedEffect(framesArray, isVideoReady) {
+        if (isVideoReady) return@LaunchedEffect
         val loaded = framesArray ?: return@LaunchedEffect
         val total = loaded.size
         if (total == 0) return@LaunchedEffect
-        val targetFrameTimeMs = 42L // Smooth ~24 FPS playback for 120 frames (approx 5 seconds loop)
+        val targetFrameTimeMs = 42L
 
-        while (isActive) {
+        while (isActive && !isVideoReady) {
             val startTime = System.currentTimeMillis()
             val nextIndex = (currentIndex + 1) % total
             if (loaded[nextIndex] != null) {
@@ -238,15 +239,118 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
         }
     }
 
-    val currentBitmap = framesArray?.getOrNull(currentIndex) ?: framesArray?.getOrNull(0)
-    if (currentBitmap != null) {
-        Image(
-            bitmap = currentBitmap,
-            contentDescription = null,
-            modifier = modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
+    Box(modifier = modifier.fillMaxSize()) {
+        // 1. Instant fallback image/animation
+        val currentBitmap = framesArray?.getOrNull(currentIndex) ?: framesArray?.getOrNull(0)
+        if (currentBitmap != null) {
+            Image(
+                bitmap = currentBitmap,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // 2. Native hardware video player on top
+        AndroidView(
+            factory = { ctx ->
+                TextureView(ctx).apply tv@{
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                        override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                            try {
+                                val surfaceObj = Surface(surface)
+                                mediaPlayer?.release()
+                                val mp = MediaPlayer().apply {
+                                    setSurface(surfaceObj)
+                                    val videoUri = Uri.parse("android.resource://" + ctx.packageName + "/" + R.raw.background_video)
+                                    setDataSource(ctx, videoUri)
+                                    isLooping = true
+                                    setVolume(0f, 0f)
+                                    setOnPreparedListener { player ->
+                                        player.start()
+                                        isVideoReady = true
+                                        adjustVideoAspectRatio(this@tv, width, height, player.videoWidth, player.videoHeight)
+                                    }
+                                    setOnErrorListener { _, _, _ ->
+                                        try {
+                                            reset()
+                                            val fallbackUri = Uri.parse("android.resource://" + ctx.packageName + "/" + R.raw.background_sunset)
+                                            setDataSource(ctx, fallbackUri)
+                                            isLooping = true
+                                            setVolume(0f, 0f)
+                                            setOnPreparedListener { p ->
+                                                p.start()
+                                                isVideoReady = true
+                                                adjustVideoAspectRatio(this@tv, width, height, p.videoWidth, p.videoHeight)
+                                            }
+                                            prepareAsync()
+                                        } catch (_: Exception) {}
+                                        true
+                                    }
+                                    prepareAsync()
+                                }
+                                mediaPlayer = mp
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+
+                        override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
+                            mediaPlayer?.let { mp ->
+                                try {
+                                    adjustVideoAspectRatio(this@tv, width, height, mp.videoWidth, mp.videoHeight)
+                                } catch (_: Exception) {}
+                            }
+                        }
+
+                        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                            try {
+                                mediaPlayer?.release()
+                                mediaPlayer = null
+                            } catch (_: Exception) {}
+                            return true
+                        }
+
+                        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxSize()
         )
     }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                mediaPlayer?.release()
+                mediaPlayer = null
+            } catch (_: Exception) {}
+        }
+    }
+}
+
+private fun adjustVideoAspectRatio(textureView: TextureView, viewWidth: Int, viewHeight: Int, videoWidth: Int, videoHeight: Int) {
+    if (viewWidth <= 0 || viewHeight <= 0 || videoWidth <= 0 || videoHeight <= 0) return
+    val viewAspect = viewWidth.toDouble() / viewHeight
+    val videoAspect = videoWidth.toDouble() / videoHeight
+
+    var scaleX = 1.0f
+    var scaleY = 1.0f
+
+    // Center Crop to fill full screen dimensions seamlessly
+    if (viewAspect > videoAspect) {
+        scaleY = (viewWidth.toDouble() / videoWidth * videoHeight / viewHeight).toFloat()
+    } else {
+        scaleX = (viewHeight.toDouble() / videoHeight * videoWidth / viewWidth).toFloat()
+    }
+
+    val matrix = Matrix()
+    matrix.setScale(scaleX, scaleY, (viewWidth / 2).toFloat(), (viewHeight / 2).toFloat())
+    textureView.setTransform(matrix)
 }
 
 
