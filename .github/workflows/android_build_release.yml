@@ -29,7 +29,7 @@ jobs:
 
       - name: Regenerate Gradle Wrapper
         run: |
-          gradle wrapper --gradle-version 8.11.1
+          gradle wrapper
           chmod +x gradlew
 
       - name: Ensure Debug Keystore Exists
