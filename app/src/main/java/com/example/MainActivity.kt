@@ -93,6 +93,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -157,19 +158,25 @@ import android.widget.VideoView
 import android.view.ViewGroup
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.graphics.SurfaceTexture
+import android.view.Surface
+import android.view.TextureView
+import android.media.MediaPlayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.viewinterop.AndroidView
 
 @Composable
 fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var framesArray by remember { mutableStateOf<Array<ImageBitmap?>?>(null) }
-    var currentIndex by remember { mutableStateOf(0) }
+    var currentIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -181,20 +188,31 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
             val decoded = arrayOfNulls<ImageBitmap>(totalFrames)
             val options = BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.RGB_565
+                inDither = true
             }
 
-            for (i in fileList.indices) {
+            // Decode first frame immediately to display without any delay
+            try {
+                assetManager.open("bg_frames/${fileList[0]}").use { stream ->
+                    BitmapFactory.decodeStream(stream, null, options)?.let {
+                        decoded[0] = it.asImageBitmap()
+                    }
+                }
+                framesArray = decoded
+            } catch (_: Exception) {}
+
+            // Decode all remaining frames progressively
+            for (i in 0 until totalFrames) {
                 if (!isActive) break
-                try {
-                    assetManager.open("bg_frames/${fileList[i]}").use { stream ->
-                        BitmapFactory.decodeStream(stream, null, options)?.let {
-                            decoded[i] = it.asImageBitmap()
+                if (decoded[i] == null) {
+                    try {
+                        assetManager.open("bg_frames/${fileList[i]}").use { stream ->
+                            BitmapFactory.decodeStream(stream, null, options)?.let {
+                                decoded[i] = it.asImageBitmap()
+                            }
                         }
-                    }
-                    if (i == 0) {
-                        framesArray = decoded
-                    }
-                } catch (_: Exception) {}
+                    } catch (_: Exception) {}
+                }
             }
             framesArray = decoded
         }
@@ -204,23 +222,23 @@ fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
         val loaded = framesArray ?: return@LaunchedEffect
         val total = loaded.size
         if (total == 0) return@LaunchedEffect
-        val targetFrameTimeMs = 66L // ~15 FPS loop for 120 frames over ~8 sec
+        val targetFrameTimeMs = 42L // Smooth ~24 FPS playback for 120 frames (approx 5 seconds loop)
 
         while (isActive) {
-            val start = System.currentTimeMillis()
+            val startTime = System.currentTimeMillis()
             val nextIndex = (currentIndex + 1) % total
             if (loaded[nextIndex] != null) {
                 currentIndex = nextIndex
             } else {
                 currentIndex = 0
             }
-            val elapsed = System.currentTimeMillis() - start
-            val sleepTime = (targetFrameTimeMs - elapsed).coerceAtLeast(8L)
+            val elapsed = System.currentTimeMillis() - startTime
+            val sleepTime = (targetFrameTimeMs - elapsed).coerceAtLeast(10L)
             delay(sleepTime)
         }
     }
 
-    val currentBitmap = framesArray?.getOrNull(currentIndex)
+    val currentBitmap = framesArray?.getOrNull(currentIndex) ?: framesArray?.getOrNull(0)
     if (currentBitmap != null) {
         Image(
             bitmap = currentBitmap,
@@ -440,19 +458,19 @@ fun QuranAppDashboard(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF042416))
+            .background(Color(0xFF041A0F))
     ) {
         BackgroundVideoPlayer(modifier = Modifier.fillMaxSize())
-        // Soft translucent dark spiritual green/teal overlay for elegant readability and contrast
+        // Soft translucent dark spiritual green overlay for elegant readability and contrast
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.12f),
-                            Color(0xFF071F18).copy(alpha = 0.30f),
-                            Color(0xFF030D0B).copy(alpha = 0.60f)
+                            Color.Black.copy(alpha = 0.15f),
+                            Color(0xFF0A2E1C).copy(alpha = 0.40f),
+                            Color(0xFF020E08).copy(alpha = 0.75f)
                         )
                     )
                 )
@@ -890,9 +908,9 @@ fun QuranAppDashboard(
                             .fillMaxWidth(0.88f)
                             .widthIn(max = 400.dp)
                             .padding(vertical = 12.dp)
-                            .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+                            .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp),
-                        color = Color(0xFF042416).copy(alpha = 0.95f)
+                        color = Color(0xFF0A2E1C).copy(alpha = 0.98f)
                     ) {
                         Column(
                             modifier = Modifier
@@ -925,8 +943,6 @@ fun QuranAppDashboard(
                                 lineHeight = 22.sp
                             )
 
-                            Spacer(modifier = Modifier.height(6.dp))
-
                             // 1. Export Button
                             Button(
                                 onClick = {
@@ -935,12 +951,13 @@ fun QuranAppDashboard(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFD4AF37),
-                                    contentColor = Color.Black
+                                    containerColor = Color.White.copy(alpha = 0.12f),
+                                    contentColor = Color.White
                                 ),
-                                shape = RoundedCornerShape(14.dp)
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
                             ) {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.Black)
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("تصدير البطاقات (نسخ احتياطي)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
@@ -1010,9 +1027,9 @@ fun QuranAppDashboard(
                             .fillMaxWidth(0.88f)
                             .widthIn(max = 380.dp)
                             .padding(vertical = 12.dp)
-                            .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+                            .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp),
-                        color = Color(0xFF042416).copy(alpha = 0.95f)
+                        color = Color(0xFF0A2E1C).copy(alpha = 0.98f)
                     ) {
                         Column(
                             modifier = Modifier
@@ -1159,11 +1176,14 @@ fun QuranCardWideRowItem(
             .fillMaxWidth()
             .height(86.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.08f))
+            .background(
+                if (isPlaying) Color(0xFF0E3E26).copy(alpha = 0.90f)
+                else Color(0xFF0A2E1C).copy(alpha = 0.65f)
+            )
             .border(
                 BorderStroke(
-                    width = 1.2.dp,
-                    color = if (isPlaying) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.22f)
+                    width = if (isPlaying) 1.8.dp else 1.2.dp,
+                    color = if (isPlaying) Color(0xFFD4AF37) else Color(0xFFD4AF37).copy(alpha = 0.35f)
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
@@ -1329,9 +1349,9 @@ fun AddEditCardDialogSimple(
                         .widthIn(max = 430.dp)
                         .heightIn(max = 620.dp)
                         .padding(vertical = 12.dp)
-                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF042416).copy(alpha = 0.95f)
+                    color = Color(0xFF0A2E1C).copy(alpha = 0.98f)
                 ) {
                     Column(
                         modifier = Modifier
@@ -1477,8 +1497,8 @@ fun AddEditCardDialogSimple(
                                 expanded = expandedStyle,
                                 onDismissRequest = { expandedStyle = false },
                                 modifier = Modifier
-                                    .background(Color(0xFF042416))
-                                    .border(1.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF072415))
+                                    .border(1.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("تلاوة (مرتل)", color = Color.White) },
@@ -1747,9 +1767,9 @@ fun LinkingDialog(
                         .widthIn(max = 430.dp)
                         .heightIn(max = 580.dp)
                         .padding(vertical = 12.dp)
-                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF042416).copy(alpha = 0.95f)
+                    color = Color(0xFF0A2E1C).copy(alpha = 0.98f)
                 ) {
             Column(
                 modifier = Modifier
@@ -1840,8 +1860,8 @@ fun LinkingDialog(
                                 },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2).copy(alpha = 0.2f), contentColor = Color.White),
-                                border = BorderStroke(1.dp, Color(0xFF1976D2).copy(alpha = 0.4f)),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32).copy(alpha = 0.25f), contentColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.4f)),
                                 contentPadding = PaddingValues(12.dp)
                             ) {
                                 Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
@@ -2035,9 +2055,9 @@ fun FastSelectionDialog(
                         .widthIn(max = 400.dp)
                         .fillMaxHeight(0.65f)
                         .heightIn(max = 500.dp)
-                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f), RoundedCornerShape(24.dp)),
+                        .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF042416)
+                    color = Color(0xFF0A2E1C).copy(alpha = 0.98f)
                 ) {
                 Column(
                     modifier = Modifier
@@ -2187,5 +2207,6 @@ fun ImmersiveDialogEffect() {
         }
     }
 }
+
 
 

@@ -358,6 +358,22 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    fun repairAndReorderCards(onComplete: (Int) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val currentCards = uiState.value
+                val cleanedCards = currentCards.filter { it.title.isNotBlank() && it.clipboardText.isNotBlank() }
+                val reordered = cleanedCards.mapIndexed { index, card ->
+                    card.copy(sortOrder = index)
+                }
+                repository.updateCardOrders(reordered)
+                onComplete(reordered.size)
+            } catch (e: Exception) {
+                onComplete(-1)
+            }
+        }
+    }
+
     fun exportCardsToUri(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {

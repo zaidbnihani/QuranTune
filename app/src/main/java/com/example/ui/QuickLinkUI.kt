@@ -66,8 +66,8 @@ fun QrCodeDisplayDialog(
             ) {
                 Surface(
                     shape = RoundedCornerShape(24.dp),
-                    color = Color(0xFF042416).copy(alpha = 0.95f),
-                    border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.4f)),
+                    color = Color(0xFF0A2E1C).copy(alpha = 0.98f),
+                    border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f)),
                     modifier = Modifier
                         .fillMaxWidth(0.88f)
                         .widthIn(max = 380.dp)
