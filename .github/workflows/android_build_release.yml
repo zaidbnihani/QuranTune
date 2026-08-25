@@ -32,6 +32,7 @@ jobs:
 
       - name: Prepare Gradle Wrapper
         run: |
+          gradle wrapper --gradle-version 9.3.1 --distribution-type bin
           chmod +x gradlew
 
       - name: Ensure Debug Keystore Exists
