@@ -67,6 +67,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -106,8 +107,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Campaign
 import com.example.ui.QrCodeDisplayDialog
 import com.example.ui.QrScannerDialog
+import com.example.ui.AdminPinDialog
+import com.example.ui.AdminBroadcastEditorDialog
+import com.example.ui.BroadcastMessageDisplayDialog
+import com.example.data.AppAnnouncement
+import com.example.data.FirebaseAnnouncementManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -399,7 +406,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()
         hideSystemUI()
 
@@ -448,6 +455,28 @@ fun QuranAppDashboard(
     // Settings and backup dialog state
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showLinkingDialog by remember { mutableStateOf(false) }
+
+    // Admin broadcast announcement states
+    var showPinDialog by remember { mutableStateOf(false) }
+    var isAdminUnlocked by remember { mutableStateOf(FirebaseAnnouncementManager.isAdminUnlocked(context)) }
+    var showBroadcastEditorDialog by remember { mutableStateOf(false) }
+    var activeAnnouncementToShow by remember { mutableStateOf<AppAnnouncement?>(null) }
+
+    // Listen for latest Firebase announcement once when app is opened
+    DisposableEffect(Unit) {
+        val listener = FirebaseAnnouncementManager.listenForLatestAnnouncement { announcement ->
+            if (announcement != null && announcement.text.isNotBlank()) {
+                val lastSeenTime = FirebaseAnnouncementManager.getLastSeenTime(context)
+                val lastSeenId = FirebaseAnnouncementManager.getLastSeenId(context)
+                if (announcement.timestamp > lastSeenTime && announcement.id != lastSeenId) {
+                    activeAnnouncementToShow = announcement
+                }
+            }
+        }
+        onDispose {
+            FirebaseAnnouncementManager.removeListener(listener)
+        }
+    }
     
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -671,7 +700,9 @@ fun QuranAppDashboard(
                             BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
                             shape = RoundedCornerShape(16.dp)
                         )
-                        .clickable { showLinkingDialog = true }
+                        .clickable {
+                            showLinkingDialog = true
+                        }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -704,6 +735,47 @@ fun QuranAppDashboard(
                         )
                     }
                 }
+
+                // Broadcast Announcement Button (Always visible on the main screen)
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    onClick = {
+                        if (isAdminUnlocked) {
+                            showBroadcastEditorDialog = true
+                        } else {
+                            showPinDialog = true
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFFD4AF37).copy(alpha = 0.20f),
+                    border = BorderStroke(1.2.dp, Color(0xFFD4AF37)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp)
+                        .testTag("admin_broadcast_trigger_button")
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = Color(0xFFD4AF37),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "نشر رسالة عامة للمستخدمين (فايربيس)",
+                            color = Color(0xFFD4AF37),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                    }
+                }
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -731,7 +803,9 @@ fun QuranAppDashboard(
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.12f))
                                 .border(1.5.dp, Color(0xFFD4AF37), CircleShape)
-                                .clickable { showLinkingDialog = true },
+                                .clickable {
+                                    showLinkingDialog = true
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -753,52 +827,12 @@ fun QuranAppDashboard(
                                 letterSpacing = 0.3.sp
                             )
                             Spacer(modifier = Modifier.height(1.dp))
-                            if (currentQueue.size > 1) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(
-                                        text = "تشغيل القائمة: ",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFD4AF37),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        itemsIndexed(currentQueue) { qIndex, qCard ->
-                                            val isCurrent = qIndex == currentQueueIndex
-                                            val textColor = if (isCurrent) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.6f)
-                                            val fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                                            
-                                            Text(
-                                                text = qCard.title,
-                                                fontSize = 11.sp,
-                                                color = textColor,
-                                                fontWeight = fontWeight
-                                            )
-                                            if (qIndex < currentQueue.size - 1) {
-                                                Text(
-                                                    text = "➔",
-                                                    fontSize = 10.sp,
-                                                    color = Color.White.copy(alpha = 0.3f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = "اضغط على أي بطاقة لتشغيل وتفعيل التلاوة تلقائياً",
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                            Text(
+                                text = "اضغط على أي بطاقة لتشغيل وتفعيل التلاوة تلقائياً",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
                         }
 
                         // Gear settings icon for import/export
@@ -817,6 +851,8 @@ fun QuranAppDashboard(
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
+
+
 
                 // WIDE full-width section style list ("أقسام عريضة مرتبة") with static rendering
                 Box(
@@ -930,7 +966,6 @@ fun QuranAppDashboard(
                                     onCardClick = {
                                         currentPlayingIndex = index
                                         viewModel.playAudio(context, card.reciterIdentifier, card.clipboardText, card.title, card.id.toString(), card.youtubeUrl)
-                                        Toast.makeText(context, "جاري تشغيل التلاوة...", Toast.LENGTH_SHORT).show()
                                     },
                                     onLongClick = {
                                         selectedCardForActions = card
@@ -987,9 +1022,9 @@ fun QuranAppDashboard(
             onDismiss = { showAddEditDialog = false },
             onSave = { title, surahNumber, reciter, triggerWord ->
                 if (selectedCardToEdit == null) {
-                    viewModel.addCard(title, surahNumber, null, "green", reciter, triggerWord, null)
+                    viewModel.addCard(title, surahNumber, null, null, reciter, triggerWord, null)
                 } else {
-                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, "green", reciter, triggerWord, null)
+                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, null, reciter, triggerWord, null)
                 }
                 showAddEditDialog = false
             }
@@ -1107,9 +1142,43 @@ fun QuranAppDashboard(
         }
     }
 
+    if (showPinDialog) {
+        AdminPinDialog(
+            onDismiss = { showPinDialog = false },
+            onSuccess = {
+                isAdminUnlocked = true
+                showPinDialog = false
+                showBroadcastEditorDialog = true
+            }
+        )
+    }
+
+    if (showBroadcastEditorDialog) {
+        AdminBroadcastEditorDialog(
+            onDismiss = { showBroadcastEditorDialog = false }
+        )
+    }
+
+    activeAnnouncementToShow?.let { announcement ->
+        BroadcastMessageDisplayDialog(
+            announcement = announcement,
+            onDismiss = {
+                FirebaseAnnouncementManager.markAnnouncementSeen(
+                    context,
+                    announcement.id,
+                    announcement.timestamp
+                )
+                activeAnnouncementToShow = null
+            }
+        )
+    }
+
     if (showLinkingDialog) {
         LinkingDialog(
-            onDismiss = { showLinkingDialog = false }
+            onDismiss = { showLinkingDialog = false },
+            onOpenBroadcastEditor = { showBroadcastEditorDialog = true },
+            isAdminUnlocked = isAdminUnlocked,
+            onAdminUnlocked = { isAdminUnlocked = true }
         )
     }
 
@@ -1281,13 +1350,12 @@ fun QuranCardWideRowItem(
             .height(86.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isPlaying) Color(0xFF0E3E26).copy(alpha = 0.90f)
-                else Color(0xFF0A2E1C).copy(alpha = 0.65f)
+                if (isPlaying) Color(0x331B3D2A) else Color.Transparent
             )
             .border(
                 BorderStroke(
-                    width = if (isPlaying) 1.8.dp else 1.2.dp,
-                    color = if (isPlaying) Color(0xFFD4AF37) else Color(0xFFD4AF37).copy(alpha = 0.35f)
+                    width = if (isPlaying) 2.0.dp else 1.0.dp,
+                    color = if (isPlaying) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.18f)
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
@@ -1801,7 +1869,10 @@ fun AddEditCardDialogSimple(
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun LinkingDialog(
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onOpenBroadcastEditor: () -> Unit = {},
+    isAdminUnlocked: Boolean = false,
+    onAdminUnlocked: () -> Unit = {}
 ) {
     val context = LocalContext.current
     
@@ -1911,6 +1982,35 @@ fun LinkingDialog(
                     modifier = Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    if (isAdminUnlocked) {
+                        item {
+                            Button(
+                                onClick = onOpenBroadcastEditor,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37).copy(alpha = 0.25f)),
+                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("linking_broadcast_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Campaign,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD4AF37),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "نشر رسالة عامة للمستخدمين (فايربيس)",
+                                    color = Color(0xFFD4AF37),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                        }
+                    }
+
                     item {
                         Text(
                             text = "معرف جهازك الفريد (ثابت لجهازك):",
@@ -2003,9 +2103,17 @@ fun LinkingDialog(
                     item {
                         Button(
                             onClick = {
-                                SyncManager.setLinkedId(context, remoteId.trim())
-                                Toast.makeText(context, "تم حفظ الإعدادات بنجاح", Toast.LENGTH_SHORT).show()
-                                onDismiss()
+                                val input = remoteId.trim()
+                                if (input == "321465") {
+                                    FirebaseAnnouncementManager.setAdminUnlocked(context, true)
+                                    onAdminUnlocked()
+                                    Toast.makeText(context, "تم تفعيل لوحة الإدارة ونشر الرسائل بنجاح", Toast.LENGTH_LONG).show()
+                                    onOpenBroadcastEditor()
+                                } else {
+                                    SyncManager.setLinkedId(context, input)
+                                    Toast.makeText(context, "تم حفظ الإعدادات بنجاح", Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                }
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
@@ -2288,7 +2396,6 @@ fun ImmersiveDialogEffect() {
             window.setWindowAnimations(0)
             window.setBackgroundDrawableResource(android.R.color.transparent)
             window.setGravity(android.view.Gravity.CENTER)
-            window.decorView.layoutDirection = android.view.View.LAYOUT_DIRECTION_RTL
             window.setLayout(
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                 android.view.ViewGroup.LayoutParams.MATCH_PARENT

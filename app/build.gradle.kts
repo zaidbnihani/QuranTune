@@ -15,8 +15,8 @@ android {
     applicationId = "com.aistudio.quranplayer.shmrzp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 10
-    versionName = "2.7.3"
+    versionCode = 11
+    versionName = "2.7.4"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -120,6 +120,8 @@ dependencies {
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   implementation(libs.firebase.messaging)
+  implementation(libs.firebase.database)
+  implementation(libs.firebase.analytics)
   // implementation(libs.firebase.firestore)
   implementation(libs.hivemq.mqtt.client)
   implementation(libs.kotlinx.coroutines.android)

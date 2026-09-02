@@ -32,12 +32,25 @@ object QuranAudioPlayer {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
     var playingCardId: String? = null
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
+
+    private val _currentPlayingTitle = MutableStateFlow<String?>(null)
+    val currentPlayingTitle: StateFlow<String?> = _currentPlayingTitle.asStateFlow()
+
+    private val _currentPlayingCardId = MutableStateFlow<String?>(null)
+    val currentPlayingCardId: StateFlow<String?> = _currentPlayingCardId.asStateFlow()
+
     private var _onPlaybackStateChanged: ((Boolean, String?, String?) -> Unit)? = null
     var onPlaybackStateChanged: ((Boolean, String?, String?) -> Unit)?
         get() = _onPlaybackStateChanged
         set(value) {
             _onPlaybackStateChanged = { isPlaying, title, cardId ->
                 playingCardId = if (isPlaying) cardId else null
+                _isPlaying.value = isPlaying
+                _currentPlayingTitle.value = if (isPlaying) title else null
+                _currentPlayingCardId.value = if (isPlaying) cardId else null
                 value?.invoke(isPlaying, title, cardId)
             }
         }

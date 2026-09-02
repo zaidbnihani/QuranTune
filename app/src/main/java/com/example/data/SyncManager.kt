@@ -122,19 +122,37 @@ object SyncManager {
                                 shouldSync = false // Do not echo back sync event
                             )
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                                if (!finalTitle.isNullOrBlank()) {
-                                    Toast.makeText(ctx, "جاري تشغيل من الجهاز الآخر: $finalTitle", Toast.LENGTH_LONG).show()
-                                }
+                                val surahName = finalTitle ?: "سورة القرآن"
+                                com.example.sendQuranNotification(
+                                    ctx,
+                                    surahName,
+                                    "جاري تشغيل: $surahName"
+                                )
                             }
                         }
                     } catch (e: Exception) {
                         Log.e("SyncManager", "Error handling remote playback play", e)
                     }
                 }
+            } else if (type == "ended") {
+                QuranAudioPlayer.stopAudio(shouldSync = false)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    val surahName = title ?: "سورة القرآن"
+                    com.example.sendQuranNotification(
+                        ctx,
+                        surahName,
+                        "انتهت: $surahName"
+                    )
+                }
             } else if (type == "stop") {
                 QuranAudioPlayer.stopAudio(shouldSync = false)
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    Toast.makeText(ctx, "إيقاف التشغيل من الجهاز الآخر", Toast.LENGTH_SHORT).show()
+                    val surahName = title ?: "سورة القرآن"
+                    com.example.sendQuranNotification(
+                        ctx,
+                        surahName,
+                        "تم إيقاف: $surahName"
+                    )
                 }
             }
         }
@@ -396,6 +414,9 @@ object SyncManager {
         return getRepo(context).isLinked()
     }
 
+    private var firebaseDbRef: com.google.firebase.database.DatabaseReference? = null
+    private var firebaseValueListener: com.google.firebase.database.ValueEventListener? = null
+
     fun startListening(context: Context) {
         this.context = context.applicationContext
         val repo = getRepo(context)
@@ -408,7 +429,38 @@ object SyncManager {
         val myId = repo.getDeviceId()
         Log.d("SyncManager", "Starting Realtime sync listeners for device: $myId")
 
-        // Initialize MQTT for device sync
+        // 1. Initialize Firebase Realtime Database Listener
+        try {
+            val db = try {
+                com.google.firebase.database.FirebaseDatabase.getInstance("https://quran-cards-default-rtdb.firebaseio.com")
+            } catch (e: Exception) {
+                com.google.firebase.database.FirebaseDatabase.getInstance()
+            }
+            val ref = db.getReference("sync_channels").child(myId)
+            
+            if (firebaseDbRef != null && firebaseValueListener != null) {
+                firebaseDbRef?.removeEventListener(firebaseValueListener!!)
+            }
+            firebaseDbRef = ref
+            
+            firebaseValueListener = object : com.google.firebase.database.ValueEventListener {
+                override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                    val jsonString = snapshot.getValue(String::class.java) ?: return
+                    if (jsonString.isNotBlank()) {
+                        genericMessageListener(jsonString)
+                    }
+                }
+                override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+                    Log.e("SyncManager", "Firebase listener cancelled: ${error.message}")
+                }
+            }
+            ref.addValueEventListener(firebaseValueListener!!)
+            Log.d("SyncManager", "Firebase Realtime Database listener attached to sync_channels/$myId")
+        } catch (e: Exception) {
+            Log.e("SyncManager", "Failed to start Firebase Realtime listener", e)
+        }
+
+        // 2. Initialize MQTT for device sync
         MqttManager.setSharedSecret(repo.getSharedSecret())
         MqttManager.initialize(myId, linkedId)
         MqttManager.removeMessageListener(genericMessageListener)
@@ -418,7 +470,20 @@ object SyncManager {
     }
 
     private fun publishRaw(targetId: String, jsonString: String, secret: String?) {
-        // MQTT delivery
+        // 1. Firebase Realtime Database delivery
+        try {
+            val db = try {
+                com.google.firebase.database.FirebaseDatabase.getInstance("https://quran-cards-default-rtdb.firebaseio.com")
+            } catch (e: Exception) {
+                com.google.firebase.database.FirebaseDatabase.getInstance()
+            }
+            db.getReference("sync_channels").child(targetId).setValue(jsonString)
+            Log.d("SyncManager", "Published state to Firebase Realtime Database at sync_channels/$targetId")
+        } catch (e: Exception) {
+            Log.e("SyncManager", "Firebase Realtime Database publish failed", e)
+        }
+
+        // 2. MQTT delivery backup
         try {
             MqttManager.publish(targetId, jsonString, false)
         } catch (e: Exception) {
