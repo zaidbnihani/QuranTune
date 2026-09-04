@@ -112,7 +112,7 @@ fun AdminPinDialog(
                         Spacer(modifier = Modifier.height(16.dp))
 
                         Text(
-                            text = "إعدادات الربط والتحكم سرية",
+                            text = "التحقق من صلاحية الإدارة",
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFD4AF37),
@@ -122,7 +122,7 @@ fun AdminPinDialog(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "هذه الإعدادات محمية برمز سري خاص. يرجى إدخال الرمز السري للمتابعة:",
+                            text = "لوحة نشر الرسائل محمية برمز سري خاص. يرجى إدخال الرمز السري للمتابعة:",
                             fontSize = 13.sp,
                             color = Color.White.copy(alpha = 0.75f),
                             textAlign = TextAlign.Center,
@@ -351,10 +351,10 @@ fun AdminBroadcastEditorDialog(
                                         return@Button
                                     }
                                     isPublishing = true
-                                    FirebaseAnnouncementManager.publishAnnouncement(trimmed) { success, error ->
+                                    FirebaseAnnouncementManager.publishAnnouncement(context, trimmed) { success, error ->
                                         isPublishing = false
                                         if (success) {
-                                            Toast.makeText(context, "تم حفظ ونشر الرسالة في فايربيس بنجاح", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "تم حفظ ونشر الرسالة بنجاح", Toast.LENGTH_LONG).show()
                                             onDismiss()
                                         } else {
                                             Toast.makeText(context, "فشل النشر: ${error ?: "خطأ غير معروف"}", Toast.LENGTH_LONG).show()
@@ -467,7 +467,7 @@ fun BroadcastMessageDisplayDialog(
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Text(
-                                text = "حسناً، فهمت",
+                                text = "تم",
                                 color = Color(0xFF0A2E1C),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp

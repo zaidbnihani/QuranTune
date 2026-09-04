@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -457,18 +458,17 @@ fun QuranAppDashboard(
     var showLinkingDialog by remember { mutableStateOf(false) }
 
     // Admin broadcast announcement states
-    var showPinDialog by remember { mutableStateOf(false) }
     var isAdminUnlocked by remember { mutableStateOf(FirebaseAnnouncementManager.isAdminUnlocked(context)) }
+    var showAdminPinDialog by remember { mutableStateOf(false) }
     var showBroadcastEditorDialog by remember { mutableStateOf(false) }
     var activeAnnouncementToShow by remember { mutableStateOf<AppAnnouncement?>(null) }
 
-    // Listen for latest Firebase announcement once when app is opened
+    // Listen for latest Firebase announcement in real-time while app is open
     DisposableEffect(Unit) {
         val listener = FirebaseAnnouncementManager.listenForLatestAnnouncement { announcement ->
-            if (announcement != null && announcement.text.isNotBlank()) {
-                val lastSeenTime = FirebaseAnnouncementManager.getLastSeenTime(context)
+            if (announcement != null && announcement.text.isNotBlank() && announcement.id.isNotBlank()) {
                 val lastSeenId = FirebaseAnnouncementManager.getLastSeenId(context)
-                if (announcement.timestamp > lastSeenTime && announcement.id != lastSeenId) {
+                if (announcement.id != lastSeenId) {
                     activeAnnouncementToShow = announcement
                 }
             }
@@ -486,14 +486,20 @@ fun QuranAppDashboard(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        // Ensure sync listeners are active on app startup if a device is linked
+        // Ask Firebase on app startup if there is a new announcement
+        FirebaseAnnouncementManager.checkForNewAnnouncement(context) { announcement ->
+            if (announcement != null && announcement.text.isNotBlank() && announcement.id.isNotBlank()) {
+                val lastSeenId = FirebaseAnnouncementManager.getLastSeenId(context)
+                if (announcement.id != lastSeenId) {
+                    activeAnnouncementToShow = announcement
+                }
+            }
+        }
+        // Ensure sync listeners on Firebase Realtime Database are active on app startup
+        SyncManager.startListening(context)
         if (SyncManager.isLinked(context)) {
-            Toast.makeText(context, "جاري تفعيل المزامنة...", Toast.LENGTH_SHORT).show()
-            SyncManager.startListening(context)
             // Initialize controller to force start PlaybackService and its sync listeners
             QuranAudioPlayer.initPlayer(context)
-        } else {
-            Toast.makeText(context, "الجهاز غير مربوط بمزامنة", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -646,6 +652,7 @@ fun QuranAppDashboard(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .statusBarsPadding()
                 .background(Color.Transparent),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -681,14 +688,14 @@ fun QuranAppDashboard(
                 )
             }
             
-            // Spacer to push content down below the camera cutout/notch in immersive fullscreen
-            Spacer(modifier = Modifier.height(32.dp))
+            // Spacer to push content down safely below the camera and status bar
+            Spacer(modifier = Modifier.height(28.dp))
             
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 540.dp)
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(horizontal = 20.dp, vertical = 6.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -735,54 +742,13 @@ fun QuranAppDashboard(
                         )
                     }
                 }
-
-                // Broadcast Announcement Button (Always visible on the main screen)
-                Spacer(modifier = Modifier.height(6.dp))
-                Surface(
-                    onClick = {
-                        if (isAdminUnlocked) {
-                            showBroadcastEditorDialog = true
-                        } else {
-                            showPinDialog = true
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFFD4AF37).copy(alpha = 0.20f),
-                    border = BorderStroke(1.2.dp, Color(0xFFD4AF37)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .testTag("admin_broadcast_trigger_button")
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 14.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Campaign,
-                            contentDescription = null,
-                            tint = Color(0xFFD4AF37),
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "نشر رسالة عامة للمستخدمين (فايربيس)",
-                            color = Color(0xFFD4AF37),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
                 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 74.dp)
+                        .heightIn(min = 70.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(Color.White.copy(alpha = 0.08f))
                         .border(
@@ -796,13 +762,13 @@ fun QuranAppDashboard(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        // Soft circular decorative container
+                        // Soft circular decorative container (compact icon)
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
                                 .background(Color.White.copy(alpha = 0.12f))
-                                .border(1.5.dp, Color(0xFFD4AF37), CircleShape)
+                                .border(1.2.dp, Color(0xFFD4AF37), CircleShape)
                                 .clickable {
                                     showLinkingDialog = true
                                 },
@@ -812,7 +778,7 @@ fun QuranAppDashboard(
                                 imageVector = Icons.AutoMirrored.Filled.LibraryBooks,
                                 contentDescription = "ربط الأجهزة",
                                 tint = Color(0xFFD4AF37),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
@@ -1142,12 +1108,12 @@ fun QuranAppDashboard(
         }
     }
 
-    if (showPinDialog) {
+    if (showAdminPinDialog) {
         AdminPinDialog(
-            onDismiss = { showPinDialog = false },
+            onDismiss = { showAdminPinDialog = false },
             onSuccess = {
+                showAdminPinDialog = false
                 isAdminUnlocked = true
-                showPinDialog = false
                 showBroadcastEditorDialog = true
             }
         )
@@ -1982,44 +1948,22 @@ fun LinkingDialog(
                     modifier = Modifier.weight(1f, fill = false),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    if (isAdminUnlocked) {
-                        item {
-                            Button(
-                                onClick = onOpenBroadcastEditor,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37).copy(alpha = 0.25f)),
-                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("linking_broadcast_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Campaign,
-                                    contentDescription = null,
-                                    tint = Color(0xFFD4AF37),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "نشر رسالة عامة للمستخدمين (فايربيس)",
-                                    color = Color(0xFFD4AF37),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
-                                )
-                            }
-                        }
-                    }
-
                     item {
                         Text(
-                            text = "معرف جهازك الفريد (ثابت لجهازك):",
+                            text = "معرف جهازك الفريد (اضغط لنسخ الكود):",
                             fontSize = 14.sp,
                             color = Color.White.copy(alpha = 0.7f)
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Device ID", deviceId)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "تم نسخ معرف جهازك بنجاح", Toast.LENGTH_SHORT).show()
+                                },
                             color = Color.White.copy(alpha = 0.08f),
                             shape = RoundedCornerShape(12.dp),
                             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
@@ -2104,10 +2048,11 @@ fun LinkingDialog(
                         Button(
                             onClick = {
                                 val input = remoteId.trim()
-                                if (input == "321465") {
+                                if (input == FirebaseAnnouncementManager.SECRET_CODE) {
                                     FirebaseAnnouncementManager.setAdminUnlocked(context, true)
                                     onAdminUnlocked()
-                                    Toast.makeText(context, "تم تفعيل لوحة الإدارة ونشر الرسائل بنجاح", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "تم تفعيل لوحة نشر الرسائل بنجاح", Toast.LENGTH_LONG).show()
+                                    onDismiss()
                                     onOpenBroadcastEditor()
                                 } else {
                                     SyncManager.setLinkedId(context, input)
@@ -2123,6 +2068,44 @@ fun LinkingDialog(
                             shape = RoundedCornerShape(14.dp)
                         ) {
                             Text("حفظ", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // يظهر زر النشر للعامة فقط إذا كتبنا الكود السري (321465)
+                    if (remoteId.trim() == FirebaseAnnouncementManager.SECRET_CODE) {
+                        item {
+                            Button(
+                                onClick = {
+                                    FirebaseAnnouncementManager.setAdminUnlocked(context, true)
+                                    onAdminUnlocked()
+                                    onDismiss()
+                                    onOpenBroadcastEditor()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFD4AF37).copy(alpha = 0.22f),
+                                    contentColor = Color(0xFFD4AF37)
+                                ),
+                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .testTag("linking_broadcast_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Campaign,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD4AF37),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "نشر رسالة عامة للمستخدمين (لوحة التحكم)",
+                                    color = Color(0xFFD4AF37),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                     }
 
