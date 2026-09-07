@@ -88,10 +88,10 @@ object SyncManager {
 
         val surahName = title ?: "سورة القرآن"
         _lastSyncEvent.value = when(type) {
-            "play" -> "شغال على الجهاز المقترن: $surahName"
-            "stop" -> "توقف على الجهاز المقترن: $surahName"
-            "ended", "completed" -> "انتهى على الجهاز المقترن: $surahName"
-            else -> "حدث: $type"
+            "play" -> surahName
+            "stop" -> "توقف: $surahName"
+            "ended", "completed" -> "انتهى: $surahName"
+            else -> surahName
         }
         
         android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -117,27 +117,27 @@ object SyncManager {
                     com.example.sendQuranNotification(
                         ctx,
                         "تزامن المصحف",
-                        "جاري التشغيل على الجهاز المقترن: $surahName"
+                        surahName
                     )
-                    Toast.makeText(ctx, "جاري التشغيل على الجهاز المقترن: $surahName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, surahName, Toast.LENGTH_SHORT).show()
                 }
             } else if (type == "ended" || type == "completed") {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     com.example.sendQuranNotification(
                         ctx,
                         "تزامن المصحف",
-                        "انتهى التشغيل على الجهاز المقترن: $surahName"
+                        "انتهى: $surahName"
                     )
-                    Toast.makeText(ctx, "انتهى التشغيل على الجهاز المقترن: $surahName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "انتهى: $surahName", Toast.LENGTH_SHORT).show()
                 }
             } else if (type == "stop") {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     com.example.sendQuranNotification(
                         ctx,
                         "تزامن المصحف",
-                        "تم إيقاف التشغيل على الجهاز المقترن: $surahName"
+                        "توقف: $surahName"
                     )
-                    Toast.makeText(ctx, "تم إيقاف التشغيل على الجهاز المقترن: $surahName", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(ctx, "توقف: $surahName", Toast.LENGTH_SHORT).show()
                 }
             }
         }

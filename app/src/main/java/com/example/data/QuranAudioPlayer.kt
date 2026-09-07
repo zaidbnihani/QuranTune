@@ -36,6 +36,9 @@ object QuranAudioPlayer {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
+    private val _lastPlaybackError = MutableStateFlow<String?>(null)
+    val lastPlaybackError: StateFlow<String?> = _lastPlaybackError.asStateFlow()
+
     private val _currentPlayingTitle = MutableStateFlow<String?>(null)
     val currentPlayingTitle: StateFlow<String?> = _currentPlayingTitle.asStateFlow()
 
@@ -590,12 +593,14 @@ object QuranAudioPlayer {
                             }
                             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                                 super.onMediaItemTransition(mediaItem, reason)
+                                _lastPlaybackError.value = null
                                 mediaItem?.mediaMetadata?.title?.toString()?.let { currentTitle ->
                                     QuranAudioPlayer.onPlaybackStateChanged?.invoke(true, currentTitle, cardId)
                                     if (shouldSync) SyncManager.publishState(context, "play", currentTitle, cardId, reciterId, surahNumber, youtubeUrl)
                                 }
                             }
                             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                                _lastPlaybackError.value = "تعذر تشغيل ($title) من الخادم، قد يكون القارئ غير متوفر أو الاتصال ضعيف."
                                 Toast.makeText(context, "فشل تشغيل الصوت، قد يكون القارئ غير متوفر لهذه السورة.", Toast.LENGTH_LONG).show()
                                 QuranAudioPlayer.onPlaybackStateChanged?.invoke(false, title, cardId)
                                 if (shouldSync) SyncManager.publishState(context, "stop", title, cardId, reciterId, surahNumber, youtubeUrl)

@@ -68,6 +68,7 @@ import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
@@ -114,6 +115,9 @@ import com.example.ui.QrScannerDialog
 import com.example.ui.AdminPinDialog
 import com.example.ui.AdminBroadcastEditorDialog
 import com.example.ui.BroadcastMessageDisplayDialog
+import com.example.ui.AiSupportStatusBanner
+import com.example.ui.AiCustomerSupportDialog
+import com.example.data.AiSupportManager
 import com.example.data.AppAnnouncement
 import com.example.data.FirebaseAnnouncementManager
 import androidx.compose.ui.platform.LocalContext
@@ -456,6 +460,7 @@ fun QuranAppDashboard(
     // Settings and backup dialog state
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showLinkingDialog by remember { mutableStateOf(false) }
+    var showAiSupportDialog by remember { mutableStateOf(false) }
 
     // Admin broadcast announcement states
     var isAdminUnlocked by remember { mutableStateOf(FirebaseAnnouncementManager.isAdminUnlocked(context)) }
@@ -501,6 +506,8 @@ fun QuranAppDashboard(
             // Initialize controller to force start PlaybackService and its sync listeners
             QuranAudioPlayer.initPlayer(context)
         }
+        // Initialize AI support & automatic diagnostic monitor
+        AiSupportManager.init(context)
     }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
@@ -816,9 +823,7 @@ fun QuranAppDashboard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-
+                Spacer(modifier = Modifier.height(10.dp))
 
                 // WIDE full-width section style list ("أقسام عريضة مرتبة") with static rendering
                 Box(
@@ -1086,6 +1091,33 @@ fun QuranAppDashboard(
                                 Text("استيراد البطاقات (استعادة النسخة)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
 
+                            // 3. AI Support & Health Diagnostics Button
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://t.me/Gegeeggerhddhdhhdhbot")
+                                        )
+                                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "تعذر فتح الرابط: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFD4AF37).copy(alpha = 0.18f),
+                                    contentColor = Color(0xFFD4AF37)
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f))
+                            ) {
+                                Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFFD4AF37))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("خدمة العملاء الذكية (تليجرام)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // Close Button
@@ -1145,6 +1177,12 @@ fun QuranAppDashboard(
             onOpenBroadcastEditor = { showBroadcastEditorDialog = true },
             isAdminUnlocked = isAdminUnlocked,
             onAdminUnlocked = { isAdminUnlocked = true }
+        )
+    }
+
+    if (showAiSupportDialog) {
+        AiCustomerSupportDialog(
+            onDismiss = { showAiSupportDialog = false }
         )
     }
 
