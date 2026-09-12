@@ -222,7 +222,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun addCard(title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null) {
+    fun addCard(title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null, scheduledHour: Int? = null, scheduledPeriod: String? = null) {
         viewModelScope.launch {
             val card = QuranCard(
                 title = title,
@@ -231,7 +231,9 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                 presetResName = presetResName,
                 reciterIdentifier = reciterIdentifier,
                 notificationTriggerWord = notificationTriggerWord,
-                youtubeUrl = youtubeUrl
+                youtubeUrl = youtubeUrl,
+                scheduledHour = scheduledHour,
+                scheduledPeriod = scheduledPeriod
             )
             repository.insertCard(card)
             if (youtubeUrl.isNullOrBlank()) {
@@ -240,7 +242,7 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun updateCard(card: QuranCard, title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null) {
+    fun updateCard(card: QuranCard, title: String, clipboardText: String, imageUri: String?, presetResName: String?, reciterIdentifier: String?, notificationTriggerWord: String?, youtubeUrl: String? = null, scheduledHour: Int? = null, scheduledPeriod: String? = null) {
         viewModelScope.launch {
             val updated = card.copy(
                 title = title,
@@ -249,7 +251,9 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                 presetResName = presetResName,
                 reciterIdentifier = reciterIdentifier,
                 notificationTriggerWord = notificationTriggerWord,
-                youtubeUrl = youtubeUrl
+                youtubeUrl = youtubeUrl,
+                scheduledHour = scheduledHour,
+                scheduledPeriod = scheduledPeriod
             )
             repository.updateCard(updated)
             if (youtubeUrl.isNullOrBlank()) {
@@ -347,7 +351,9 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         notificationTriggerWord = card.notificationTriggerWord,
                         youtubeUrl = card.youtubeUrl,
                         sortOrder = maxSort + 1 + index,
-                        timestamp = System.currentTimeMillis()
+                        timestamp = System.currentTimeMillis(),
+                        scheduledHour = card.scheduledHour,
+                        scheduledPeriod = card.scheduledPeriod
                     )
                 }
                 repository.insertCards(preparedCards)
@@ -389,6 +395,8 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         put("notificationTriggerWord", card.notificationTriggerWord)
                         put("youtubeUrl", card.youtubeUrl)
                         put("sortOrder", card.sortOrder)
+                        if (card.scheduledHour != null) put("scheduledHour", card.scheduledHour)
+                        if (card.scheduledPeriod != null) put("scheduledPeriod", card.scheduledPeriod)
                     }
                     jsonArray.put(jsonObj)
                 }
@@ -425,6 +433,8 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                         val notificationTriggerWord = if (obj.isNull("notificationTriggerWord")) null else obj.optString("notificationTriggerWord", "")
                         val youtubeUrl = if (obj.isNull("youtubeUrl")) null else obj.optString("youtubeUrl", "")
                         val sortOrder = obj.optInt("sortOrder", 0)
+                        val scheduledHour = if (obj.has("scheduledHour") && !obj.isNull("scheduledHour")) obj.optInt("scheduledHour") else null
+                        val scheduledPeriod = if (obj.has("scheduledPeriod") && !obj.isNull("scheduledPeriod")) obj.optString("scheduledPeriod", "") else null
                         importedList.add(
                             QuranCard(
                                 title = title,
@@ -434,7 +444,9 @@ class QuranCardViewModel(application: Application) : AndroidViewModel(applicatio
                                 reciterIdentifier = reciterIdentifier,
                                 notificationTriggerWord = notificationTriggerWord,
                                 youtubeUrl = youtubeUrl,
-                                sortOrder = sortOrder
+                                sortOrder = sortOrder,
+                                scheduledHour = scheduledHour,
+                                scheduledPeriod = if (scheduledPeriod.isNullOrBlank()) null else scheduledPeriod
                             )
                         )
                     }

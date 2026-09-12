@@ -110,6 +110,12 @@ import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.NightsStay
 import com.example.ui.QrCodeDisplayDialog
 import com.example.ui.QrScannerDialog
 import com.example.ui.AdminPinDialog
@@ -510,6 +516,42 @@ fun QuranAppDashboard(
         AiSupportManager.init(context)
     }
 
+    // Scheduled automatic playback checker loop
+    LaunchedEffect(cards) {
+        var lastTriggeredKey = ""
+        while (isActive) {
+            if (cards.isNotEmpty()) {
+                val calendar = java.util.Calendar.getInstance()
+                val rawHour = calendar.get(java.util.Calendar.HOUR)
+                val hour12 = if (rawHour == 0) 12 else rawHour
+                val amPm = calendar.get(java.util.Calendar.AM_PM)
+                val periodStr = if (amPm == java.util.Calendar.AM) "صباح" else "مساء"
+                val dayOfYear = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+
+                for (card in cards) {
+                    if (card.scheduledHour != null && card.scheduledHour == hour12 && card.scheduledPeriod == periodStr) {
+                        val key = "${card.id}-$hour12-$periodStr-$dayOfYear"
+                        if (lastTriggeredKey != key) {
+                            lastTriggeredKey = key
+                            withContext(Dispatchers.Main) {
+                                viewModel.playAudio(
+                                    context,
+                                    card.reciterIdentifier,
+                                    card.clipboardText,
+                                    card.title,
+                                    card.id.toString(),
+                                    card.youtubeUrl
+                                )
+                                Toast.makeText(context, "بدء التشغيل المجدول تلقائياً: ${card.title}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            }
+            delay(10000L)
+        }
+    }
+
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -553,6 +595,29 @@ fun QuranAppDashboard(
             }
         } else {
             currentPlayingIndex = -1
+        }
+    }
+
+    // Auto-scheduled playback checker
+    var lastTriggeredScheduleKey by remember { mutableStateOf("") }
+    LaunchedEffect(cards) {
+        while (isActive) {
+            val cal = java.util.Calendar.getInstance()
+            val hour12 = cal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
+            val amPm = if (cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "صباح" else "مساء"
+            val minute = cal.get(java.util.Calendar.MINUTE)
+            val scheduleKey = "$hour12:$amPm:$minute"
+
+            if (minute == 0 && lastTriggeredScheduleKey != scheduleKey) {
+                cards.forEach { card ->
+                    val trigger = card.notificationTriggerWord ?: ""
+                    if (trigger.contains("ساعة $hour12 $amPm") || (trigger.contains("$hour12") && trigger.contains(amPm))) {
+                        lastTriggeredScheduleKey = scheduleKey
+                        viewModel.playAudio(context, card.reciterIdentifier, card.clipboardText, card.title, card.id.toString(), card.youtubeUrl)
+                    }
+                }
+            }
+            delay(10000L)
         }
     }
 
@@ -991,11 +1056,11 @@ fun QuranAppDashboard(
             viewModel = viewModel,
             card = selectedCardToEdit,
             onDismiss = { showAddEditDialog = false },
-            onSave = { title, surahNumber, reciter, triggerWord ->
+            onSave = { title, surahNumber, reciter, triggerWord, scheduledHour, scheduledPeriod ->
                 if (selectedCardToEdit == null) {
-                    viewModel.addCard(title, surahNumber, null, null, reciter, triggerWord, null)
+                    viewModel.addCard(title, surahNumber, null, null, reciter, triggerWord, null, scheduledHour, scheduledPeriod)
                 } else {
-                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, null, reciter, triggerWord, null)
+                    viewModel.updateCard(selectedCardToEdit!!, title, surahNumber, null, null, reciter, triggerWord, null, scheduledHour, scheduledPeriod)
                 }
                 showAddEditDialog = false
             }
@@ -1015,8 +1080,8 @@ fun QuranAppDashboard(
                 ) {
                     Surface(
                         modifier = Modifier
-                            .fillMaxWidth(0.88f)
-                            .widthIn(max = 400.dp)
+                            .fillMaxWidth(0.90f)
+                            .widthIn(max = 420.dp)
                             .padding(vertical = 12.dp)
                             .border(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f), RoundedCornerShape(24.dp)),
                         shape = RoundedCornerShape(24.dp),
@@ -1035,25 +1100,34 @@ fun QuranAppDashboard(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "إعدادات النسخ الاحتياطي",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFD4AF37)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD4AF37),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "الإعدادات",
+                                        fontSize = 20.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFD4AF37)
+                                    )
+                                }
                                 IconButton(onClick = { showSettingsDialog = false }) {
                                     Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
                                 }
                             }
 
                             Text(
-                                text = "يمكنك تصدير بطاقاتك الحالية في ملف وحفظه لتتمكن من استيرادها لاحقاً في أي هاتف آخر بسهولة.",
-                                fontSize = 14.sp,
-                                color = Color.White.copy(alpha = 0.8f),
-                                lineHeight = 22.sp
+                                text = "يمكنك تصدير نسختك من البطاقات والإعدادات في ملف وحفظه، أو استعادة نسخة سابقة في أي وقت:",
+                                fontSize = 13.sp,
+                                color = Color.White.copy(alpha = 0.85f),
+                                lineHeight = 20.sp
                             )
 
-                            // 1. Export Button
+                            // 1. Export Button (إصدار وتصدير النسخة)
                             Button(
                                 onClick = {
                                     showSettingsDialog = false
@@ -1061,18 +1135,18 @@ fun QuranAppDashboard(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White.copy(alpha = 0.12f),
-                                    contentColor = Color.White
+                                    containerColor = Color(0xFFD4AF37).copy(alpha = 0.22f),
+                                    contentColor = Color(0xFFD4AF37)
                                 ),
                                 shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
+                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.6f))
                             ) {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFFD4AF37))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("تصدير البطاقات (نسخ احتياطي)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("تصدير وإصدار النسخة الكاملة", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
 
-                            // 2. Import Button
+                            // 2. Import Button (استعادة النسخة)
                             Button(
                                 onClick = {
                                     showSettingsDialog = false
@@ -1086,9 +1160,9 @@ fun QuranAppDashboard(
                                 shape = RoundedCornerShape(14.dp),
                                 border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.25f))
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("استيراد البطاقات (استعادة النسخة)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("استعادة النسخة الاحتياطية", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
 
                             // 3. AI Support & Health Diagnostics Button
@@ -1107,15 +1181,15 @@ fun QuranAppDashboard(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFD4AF37).copy(alpha = 0.18f),
-                                    contentColor = Color(0xFFD4AF37)
+                                    containerColor = Color.White.copy(alpha = 0.08f),
+                                    contentColor = Color.White
                                 ),
                                 shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.2.dp, Color(0xFFD4AF37).copy(alpha = 0.5f))
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
                             ) {
                                 Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFFD4AF37))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("خدمة العملاء الذكية (تليجرام)", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("خدمة العملاء والمساعدة (تليجرام)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))
@@ -1432,7 +1506,7 @@ fun AddEditCardDialogSimple(
     viewModel: QuranCardViewModel,
     card: QuranCard?,
     onDismiss: () -> Unit,
-    onSave: (title: String, surahNumber: String, reciter: String?, notificationTriggerWord: String?) -> Unit
+    onSave: (title: String, surahNumber: String, reciter: String?, notificationTriggerWord: String?, scheduledHour: Int?, scheduledPeriod: String?) -> Unit
 ) {
     val context = LocalContext.current
     var title by remember { mutableStateOf(card?.title ?: "") }
@@ -1468,6 +1542,10 @@ fun AddEditCardDialogSimple(
 
     var triggerWord by remember { mutableStateOf(card?.notificationTriggerWord ?: "") }
     var expandedSettings by remember { mutableStateOf(false) }
+
+    var expandedSchedule by remember { mutableStateOf(false) }
+    var selectedTimePeriod by remember { mutableStateOf("صباح") } // "صباح" or "مساء"
+    var selectedHour by remember { mutableIntStateOf(3) } // 1, 2, 3, 4, 5...
 
     var customAudioUri by remember { mutableStateOf<String?>(
         if (card?.clipboardText?.startsWith("content://") == true || card?.clipboardText?.startsWith("file://") == true) {
@@ -1791,6 +1869,152 @@ fun AddEditCardDialogSimple(
                     }
                 }
 
+                // Expandable Schedule Automation Feature (Compact like Additional Settings)
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { expandedSchedule = !expandedSchedule }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (expandedSchedule) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                            contentDescription = null,
+                            tint = Color(0xFFD4AF37),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "الجدولة والتشغيل التلقائي",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFD4AF37)
+                        )
+                    }
+
+                    if (expandedSchedule) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, start = 4.dp, end = 4.dp)
+                        ) {
+                            // 12 Numbers (Hours 1 to 12 in 2 rows: 1..6 on top, 7..12 on bottom)
+                            Text(
+                                text = "اختر الساعة: (الساعة $selectedHour:00 $selectedTimePeriod)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFFD4AF37)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Row 1: 1 to 6
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                (1..6).forEach { hour ->
+                                    val isHourSelected = selectedHour == hour
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isHourSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.08f))
+                                            .border(
+                                                width = if (isHourSelected) 1.2.dp else 1.dp,
+                                                color = if (isHourSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedHour = hour },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "$hour",
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isHourSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isHourSelected) Color.Black else Color.White
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Row 2: 7 to 12
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                (7..12).forEach { hour ->
+                                    val isHourSelected = selectedHour == hour
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isHourSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.08f))
+                                            .border(
+                                                width = if (isHourSelected) 1.2.dp else 1.dp,
+                                                color = if (isHourSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedHour = hour },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "$hour",
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isHourSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isHourSelected) Color.Black else Color.White
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Period selector (صباح / مساء) - directly below the hour numbers
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("صباح", "مساء").forEach { period ->
+                                    val isSelected = selectedTimePeriod == period
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(34.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.08f))
+                                            .border(
+                                                width = if (isSelected) 1.2.dp else 1.dp,
+                                                color = if (isSelected) Color(0xFFD4AF37) else Color.White.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedTimePeriod = period },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = period,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) Color.Black else Color.White
+                                        )
+                                    }
+                                }
+                            }
+
+                            Text(
+                                text = "سيتم تفعيل وتشغيل التلاوة يومياً في تمام الساعة $selectedHour:00 $selectedTimePeriod.",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(top = 6.dp, start = 4.dp)
+                            )
+                        }
+                    }
+                }
+
                 // Bottom Action buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1812,10 +2036,23 @@ fun AddEditCardDialogSimple(
                     Button(
                         onClick = {
                             if (title.isNotBlank()) {
+                                val scheduledTrigger = if (expandedSchedule) "ساعة $selectedHour $selectedTimePeriod" else ""
+                                val finalTrigger = when {
+                                    triggerWord.isNotBlank() && scheduledTrigger.isNotBlank() -> "$triggerWord | $scheduledTrigger"
+                                    scheduledTrigger.isNotBlank() -> scheduledTrigger
+                                    else -> triggerWord.ifBlank { null }
+                                }
+                                val schHour = if (expandedSchedule) selectedHour else null
+                                val schPeriod = if (expandedSchedule) selectedTimePeriod else null
+                                
                                 if (customAudioUri != null) {
-                                    onSave(title, customAudioUri!!, selectedReciter, triggerWord)
+                                    onSave(title, customAudioUri!!, selectedReciter, finalTrigger, schHour, schPeriod)
                                 } else {
-                                    onSave(title, selectedSurahNumber, selectedReciter, triggerWord)
+                                    onSave(title, selectedSurahNumber, selectedReciter, finalTrigger, schHour, schPeriod)
+                                }
+
+                                if (expandedSchedule) {
+                                    Toast.makeText(context, "تم حفظ البطاقة وجدولتها للتشغيل التلقائي الساعة $selectedHour:00 $selectedTimePeriod", Toast.LENGTH_LONG).show()
                                 }
                             } else {
                                 Toast.makeText(context, "الرجاء تعبئة العنوان", Toast.LENGTH_SHORT).show()

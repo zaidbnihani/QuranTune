@@ -14,5 +14,7 @@ data class QuranCard(
     val notificationTriggerWord: String? = null,
     val youtubeUrl: String? = null,
     val sortOrder: Int = 0,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val scheduledHour: Int? = null,
+    val scheduledPeriod: String? = null
 )
