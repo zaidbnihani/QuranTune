@@ -1540,12 +1540,22 @@ fun AddEditCardDialogSimple(
     var searchReciter by remember { mutableStateOf("") }
     var searchSurah by remember { mutableStateOf("") }
 
-    var triggerWord by remember { mutableStateOf(card?.notificationTriggerWord ?: "") }
+    val initialTriggerWord = remember(card) {
+        val raw = card?.notificationTriggerWord ?: ""
+        if (raw.contains(" | ساعة ")) {
+            raw.substringBefore(" | ساعة ").trim()
+        } else if (raw.startsWith("ساعة ")) {
+            ""
+        } else {
+            raw
+        }
+    }
+    var triggerWord by remember { mutableStateOf(initialTriggerWord) }
     var expandedSettings by remember { mutableStateOf(false) }
 
-    var expandedSchedule by remember { mutableStateOf(false) }
-    var selectedTimePeriod by remember { mutableStateOf("صباح") } // "صباح" or "مساء"
-    var selectedHour by remember { mutableIntStateOf(3) } // 1, 2, 3, 4, 5...
+    var expandedSchedule by remember { mutableStateOf(card?.scheduledHour != null) }
+    var selectedTimePeriod by remember { mutableStateOf(card?.scheduledPeriod ?: "صباح") } // "صباح" or "مساء"
+    var selectedHour by remember { mutableIntStateOf(card?.scheduledHour ?: 3) } // 1, 2, 3, 4, 5...
 
     var customAudioUri by remember { mutableStateOf<String?>(
         if (card?.clipboardText?.startsWith("content://") == true || card?.clipboardText?.startsWith("file://") == true) {
@@ -2036,12 +2046,7 @@ fun AddEditCardDialogSimple(
                     Button(
                         onClick = {
                             if (title.isNotBlank()) {
-                                val scheduledTrigger = if (expandedSchedule) "ساعة $selectedHour $selectedTimePeriod" else ""
-                                val finalTrigger = when {
-                                    triggerWord.isNotBlank() && scheduledTrigger.isNotBlank() -> "$triggerWord | $scheduledTrigger"
-                                    scheduledTrigger.isNotBlank() -> scheduledTrigger
-                                    else -> triggerWord.ifBlank { null }
-                                }
+                                val finalTrigger = triggerWord.ifBlank { null }
                                 val schHour = if (expandedSchedule) selectedHour else null
                                 val schPeriod = if (expandedSchedule) selectedTimePeriod else null
                                 
