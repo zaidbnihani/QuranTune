@@ -1,3 +1,5 @@
+import java.security.KeyStore
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
@@ -15,8 +17,10 @@ android {
     applicationId = "com.aistudio.quranplayer.shmrzp"
     minSdk = 24
     targetSdk = 36
-    versionCode = 15
-    versionName = "2.7.8"
+    versionCode = 21
+    versionName = "2.8.3"
+
+    buildConfigField("boolean", "IS_DEFAULT_AD_FREE", "false")
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -31,11 +35,30 @@ android {
     create("release") {
       val envKeystorePath = System.getenv("KEYSTORE_PATH") ?: ""
       val keystoreFile = if (envKeystorePath.isNotEmpty()) file(envKeystorePath) else file("${rootDir}/debug.keystore")
+      val storePass = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotEmpty() }
+        ?: System.getenv("KEYSTORE_PASSWORD")?.takeIf { it.isNotEmpty() }
+        ?: "android"
+      val keyPass = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotEmpty() } ?: storePass
+
+      val resolvedAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotEmpty() } ?: run {
+        if (keystoreFile.exists()) {
+          try {
+            val ks = KeyStore.getInstance(keystoreFile, storePass.toCharArray())
+            val aliases = ks.aliases()
+            if (aliases.hasMoreElements()) aliases.nextElement() else "androiddebugkey"
+          } catch (_: Exception) {
+            "androiddebugkey"
+          }
+        } else {
+          "androiddebugkey"
+        }
+      }
+
       if (keystoreFile.exists()) {
         storeFile = keystoreFile
-        storePassword = System.getenv("STORE_PASSWORD")?.takeIf { it.isNotEmpty() } ?: "android"
-        keyAlias = System.getenv("KEY_ALIAS")?.takeIf { it.isNotEmpty() } ?: "androiddebugkey"
-        keyPassword = System.getenv("KEY_PASSWORD")?.takeIf { it.isNotEmpty() } ?: "android"
+        storePassword = storePass
+        keyAlias = resolvedAlias
+        keyPassword = keyPass
       } else {
         storeFile = file("${rootDir}/debug.keystore")
         storePassword = "android"
@@ -138,6 +161,8 @@ dependencies {
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
+  implementation(libs.play.services.ads)
+  implementation(libs.play.app.update)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

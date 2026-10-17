@@ -71,6 +71,13 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Star
+import android.app.Activity
+import com.example.data.AdManager
+import com.example.ui.OneHourSessionAdDialog
+import com.example.ui.GreenChallengeAdDialog
+import com.example.ui.AdLoadingOverlay
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -169,10 +176,8 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import com.example.ui.theme.MyApplicationTheme
-import com.example.utils.UpdateCheckerEffect
 import com.example.utils.PrivacyPolicyChecker
 import android.net.Uri
-import android.widget.VideoView
 import android.view.ViewGroup
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -193,76 +198,35 @@ import androidx.compose.ui.viewinterop.AndroidView
 @Composable
 fun BackgroundVideoPlayer(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var framesArray by remember { mutableStateOf<Array<ImageBitmap?>?>(null) }
-    var currentIndex by remember { mutableIntStateOf(0) }
+    var posterBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
     var isVideoReady by remember { mutableStateOf(false) }
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val assetManager = context.assets
-            val fileList = assetManager.list("bg_frames")?.filter { it.endsWith(".webp") }?.sorted() ?: emptyList()
-            val totalFrames = fileList.size
-            if (totalFrames == 0) return@withContext
-
-            val decoded = arrayOfNulls<ImageBitmap>(totalFrames)
-            val options = BitmapFactory.Options().apply {
-                inPreferredConfig = Bitmap.Config.RGB_565
-                inDither = true
-            }
-
             try {
-                assetManager.open("bg_frames/${fileList[0]}").use { stream ->
-                    BitmapFactory.decodeStream(stream, null, options)?.let {
-                        decoded[0] = it.asImageBitmap()
+                val assetManager = context.assets
+                val fileList = assetManager.list("bg_frames")?.filter { it.endsWith(".webp") }?.sorted()
+                val firstFrame = fileList?.firstOrNull()
+                if (firstFrame != null) {
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                    assetManager.open("bg_frames/$firstFrame").use { stream ->
+                        BitmapFactory.decodeStream(stream, null, options)?.let {
+                            posterBitmap = it.asImageBitmap()
+                        }
                     }
                 }
-                framesArray = decoded
             } catch (_: Exception) {}
-
-            for (i in 0 until totalFrames) {
-                if (!isActive) break
-                if (decoded[i] == null) {
-                    try {
-                        assetManager.open("bg_frames/${fileList[i]}").use { stream ->
-                            BitmapFactory.decodeStream(stream, null, options)?.let {
-                                decoded[i] = it.asImageBitmap()
-                            }
-                        }
-                    } catch (_: Exception) {}
-                }
-            }
-            framesArray = decoded
-        }
-    }
-
-    LaunchedEffect(framesArray, isVideoReady) {
-        if (isVideoReady) return@LaunchedEffect
-        val loaded = framesArray ?: return@LaunchedEffect
-        val total = loaded.size
-        if (total == 0) return@LaunchedEffect
-        val targetFrameTimeMs = 42L
-
-        while (isActive && !isVideoReady) {
-            val startTime = System.currentTimeMillis()
-            val nextIndex = (currentIndex + 1) % total
-            if (loaded[nextIndex] != null) {
-                currentIndex = nextIndex
-            } else {
-                currentIndex = 0
-            }
-            val elapsed = System.currentTimeMillis() - startTime
-            val sleepTime = (targetFrameTimeMs - elapsed).coerceAtLeast(10L)
-            delay(sleepTime)
         }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // 1. Instant fallback image/animation
-        val currentBitmap = framesArray?.getOrNull(currentIndex) ?: framesArray?.getOrNull(0)
-        if (currentBitmap != null) {
+        // 1. Instant lightweight poster fallback while video prepares
+        if (posterBitmap != null && !isVideoReady) {
             Image(
-                bitmap = currentBitmap,
+                bitmap = posterBitmap!!,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -406,6 +370,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         hideSystemUI()
+        AdManager.onResume(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        AdManager.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -421,6 +391,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideSystemUI()
 
+        // Initialize AdMob & AdManager
+        AdManager.initialize(this)
+
         // Start MQTT Service in background for device-to-device sync
         try {
             androidx.core.content.ContextCompat.startForegroundService(this, Intent(this, MqttService::class.java))
@@ -433,7 +406,7 @@ class MainActivity : ComponentActivity() {
                 // Force Right-to-Left layout for full Arabic interface immersive experience
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     PrivacyPolicyChecker()
-                    UpdateCheckerEffect()
+                    com.example.ui.GooglePlayUpdateEffect()
                     QuranAppDashboard(modifier = Modifier.fillMaxSize())
                 }
             }
@@ -455,6 +428,7 @@ fun QuranAppDashboard(
     val currentQueue by com.example.data.QuranAudioPlayer.currentQueue.collectAsState()
     val currentQueueIndex by com.example.data.QuranAudioPlayer.currentQueueIndex.collectAsState()
     val context = LocalContext.current
+    val activity = context as? Activity
 
     var showAddEditDialog by remember { mutableStateOf(false) }
     var selectedCardToEdit by remember { mutableStateOf<QuranCard?>(null) }
@@ -517,38 +491,60 @@ fun QuranAppDashboard(
     }
 
     // Scheduled automatic playback checker loop
+    // Runs in the background and ONLY triggers at the top of the scheduled hour (:00)
+    // while the app is active, never automatically upon simply opening the app.
     LaunchedEffect(cards) {
-        var lastTriggeredKey = ""
+        val prefs = context.getSharedPreferences("quran_schedule_prefs", Context.MODE_PRIVATE)
+        // Record all cards matching current hour at startup so opening the app never auto-plays
+        val startupCal = java.util.Calendar.getInstance()
+        val startupHour12 = startupCal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
+        val startupAmPm = if (startupCal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "صباح" else "مساء"
+        val startupDay = startupCal.get(java.util.Calendar.DAY_OF_YEAR)
+        for (c in cards) {
+            if (c.scheduledHour != null && c.scheduledHour == startupHour12 && c.scheduledPeriod == startupAmPm) {
+                val startKey = "${c.id}-$startupHour12-$startupAmPm-$startupDay"
+                prefs.edit().putBoolean("startup_blocked_$startKey", true).apply()
+            }
+        }
+
         while (isActive) {
+            delay(15000L)
             if (cards.isNotEmpty()) {
                 val calendar = java.util.Calendar.getInstance()
-                val rawHour = calendar.get(java.util.Calendar.HOUR)
-                val hour12 = if (rawHour == 0) 12 else rawHour
-                val amPm = calendar.get(java.util.Calendar.AM_PM)
-                val periodStr = if (amPm == java.util.Calendar.AM) "صباح" else "مساء"
-                val dayOfYear = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+                val minute = calendar.get(java.util.Calendar.MINUTE)
 
-                for (card in cards) {
-                    if (card.scheduledHour != null && card.scheduledHour == hour12 && card.scheduledPeriod == periodStr) {
-                        val key = "${card.id}-$hour12-$periodStr-$dayOfYear"
-                        if (lastTriggeredKey != key) {
-                            lastTriggeredKey = key
-                            withContext(Dispatchers.Main) {
-                                viewModel.playAudio(
-                                    context,
-                                    card.reciterIdentifier,
-                                    card.clipboardText,
-                                    card.title,
-                                    card.id.toString(),
-                                    card.youtubeUrl
-                                )
-                                Toast.makeText(context, "بدء التشغيل المجدول تلقائياً: ${card.title}", Toast.LENGTH_LONG).show()
+                // Must be at the exact top of the hour (:00)
+                if (minute == 0) {
+                    val rawHour = calendar.get(java.util.Calendar.HOUR)
+                    val hour12 = if (rawHour == 0) 12 else rawHour
+                    val amPm = calendar.get(java.util.Calendar.AM_PM)
+                    val periodStr = if (amPm == java.util.Calendar.AM) "صباح" else "مساء"
+                    val dayOfYear = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+
+                    for (card in cards) {
+                        if (card.scheduledHour != null && card.scheduledHour == hour12 && card.scheduledPeriod == periodStr) {
+                            val key = "${card.id}-$hour12-$periodStr-$dayOfYear"
+                            val isBlockedStartup = prefs.getBoolean("startup_blocked_$key", false)
+                            val isAlreadyPlayed = prefs.getBoolean("played_$key", false)
+
+                            if (!isBlockedStartup && !isAlreadyPlayed) {
+                                prefs.edit().putBoolean("played_$key", true).apply()
+                                withContext(Dispatchers.Main) {
+                                    viewModel.playAudio(
+                                        context,
+                                        card.reciterIdentifier,
+                                        card.clipboardText,
+                                        card.title,
+                                        card.id.toString(),
+                                        card.youtubeUrl
+                                    )
+                                    Toast.makeText(context, "بدء التشغيل المجدول تلقائياً: ${card.title}", Toast.LENGTH_LONG).show()
+                                }
                             }
                         }
                     }
                 }
             }
-            delay(10000L)
         }
     }
 
@@ -595,29 +591,6 @@ fun QuranAppDashboard(
             }
         } else {
             currentPlayingIndex = -1
-        }
-    }
-
-    // Auto-scheduled playback checker
-    var lastTriggeredScheduleKey by remember { mutableStateOf("") }
-    LaunchedEffect(cards) {
-        while (isActive) {
-            val cal = java.util.Calendar.getInstance()
-            val hour12 = cal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
-            val amPm = if (cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "صباح" else "مساء"
-            val minute = cal.get(java.util.Calendar.MINUTE)
-            val scheduleKey = "$hour12:$amPm:$minute"
-
-            if (minute == 0 && lastTriggeredScheduleKey != scheduleKey) {
-                cards.forEach { card ->
-                    val trigger = card.notificationTriggerWord ?: ""
-                    if (trigger.contains("ساعة $hour12 $amPm") || (trigger.contains("$hour12") && trigger.contains(amPm))) {
-                        lastTriggeredScheduleKey = scheduleKey
-                        viewModel.playAudio(context, card.reciterIdentifier, card.clipboardText, card.title, card.id.toString(), card.youtubeUrl)
-                    }
-                }
-            }
-            delay(10000L)
         }
     }
 
@@ -695,7 +668,11 @@ fun QuranAppDashboard(
             FloatingActionButton(
                 onClick = {
                     selectedCardToEdit = null
-                    showAddEditDialog = true
+                    if (AdManager.canAddCard(cards.size)) {
+                        showAddEditDialog = true
+                    } else {
+                        AdManager.openGreenChallengeDialog()
+                    }
                 },
                 containerColor = Color(0xFFD4AF37),
                 contentColor = Color.Black,
@@ -780,7 +757,13 @@ fun QuranAppDashboard(
                             shape = RoundedCornerShape(16.dp)
                         )
                         .clickable {
-                            showLinkingDialog = true
+                            if (activity != null) {
+                                AdManager.showAdForFeature(activity, "إعدادات الربط والمزامنة") {
+                                    showLinkingDialog = true
+                                }
+                            } else {
+                                showLinkingDialog = true
+                            }
                         }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -842,7 +825,13 @@ fun QuranAppDashboard(
                                 .background(Color.White.copy(alpha = 0.12f))
                                 .border(1.2.dp, Color(0xFFD4AF37), CircleShape)
                                 .clickable {
-                                    showLinkingDialog = true
+                                    if (activity != null) {
+                                        AdManager.showAdForFeature(activity, "إعدادات الربط والمزامنة") {
+                                            showLinkingDialog = true
+                                        }
+                                    } else {
+                                        showLinkingDialog = true
+                                    }
                                 },
                             contentAlignment = Alignment.Center
                         ) {
@@ -889,6 +878,8 @@ fun QuranAppDashboard(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
+
+
 
                 // WIDE full-width section style list ("أقسام عريضة مرتبة") with static rendering
                 Box(
@@ -985,12 +976,12 @@ fun QuranAppDashboard(
                                 
                                 val animatedScale by animateFloatAsState(
                                     targetValue = if (isCurrentlyDragged) 1.05f else 1f,
-                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                    animationSpec = tween(durationMillis = 150),
                                     label = "scale"
                                 )
                                 val animatedElevation by animateDpAsState(
                                     targetValue = if (isCurrentlyDragged) 14.dp else 0.dp,
-                                    animationSpec = spring(stiffness = Spring.StiffnessLow),
+                                    animationSpec = tween(durationMillis = 150),
                                     label = "elevation"
                                 )
                                 
@@ -1067,6 +1058,20 @@ fun QuranAppDashboard(
         )
     }
 
+    // AdMob Ads & Challenge Dialogs
+    val currentActivity = LocalContext.current as? Activity
+    if (currentActivity != null) {
+        OneHourSessionAdDialog(activity = currentActivity)
+        GreenChallengeAdDialog(
+            activity = currentActivity,
+            onCardUnlocked = {
+                selectedCardToEdit = null
+                showAddEditDialog = true
+            }
+        )
+    }
+    AdLoadingOverlay()
+
     if (showSettingsDialog) {
         Dialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1131,7 +1136,13 @@ fun QuranAppDashboard(
                             Button(
                                 onClick = {
                                     showSettingsDialog = false
-                                    createDocumentLauncher.launch("quran_cards_backup.json")
+                                    if (activity != null) {
+                                        AdManager.showAdForFeature(activity, "النسخ الاحتياطي") {
+                                            createDocumentLauncher.launch("quran_cards_backup.json")
+                                        }
+                                    } else {
+                                        createDocumentLauncher.launch("quran_cards_backup.json")
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
@@ -1150,7 +1161,13 @@ fun QuranAppDashboard(
                             Button(
                                 onClick = {
                                     showSettingsDialog = false
-                                    openDocumentLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                                    if (activity != null) {
+                                        AdManager.showAdForFeature(activity, "استعادة النسخة") {
+                                            openDocumentLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                                        }
+                                    } else {
+                                        openDocumentLauncher.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                                    }
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(
@@ -1190,6 +1207,68 @@ fun QuranAppDashboard(
                                 Icon(Icons.Default.SmartToy, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFFD4AF37))
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text("خدمة العملاء والمساعدة (تليجرام)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Version & Ad Status Card (Cannot remove ads in ad-supported version)
+                            val isBuildAdFree = AdManager.isBuildAdFree
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isBuildAdFree) Color(0xFFD4AF37).copy(alpha = 0.12f) else Color.White.copy(alpha = 0.08f),
+                                border = BorderStroke(1.2.dp, if (isBuildAdFree) Color(0xFFD4AF37).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.2f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isBuildAdFree) Icons.Default.Star else Icons.Default.Info,
+                                                contentDescription = null,
+                                                tint = if (isBuildAdFree) Color(0xFFD4AF37) else Color(0xFF81C784),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isBuildAdFree) "نسخة VIP الحصرية (بدون إعلانات)" else "النسخة المجانية المدعومة بالإعلانات",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = if (isBuildAdFree) Color(0xFFD4AF37) else Color.White
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = if (isBuildAdFree) 
+                                                "إصدار خاص بدون إعلانات وبطاقات غير محدودة." 
+                                            else 
+                                                "الإعلانات مفعّلة وثابتة لدعم التطبيق، ولا يمكن إيقافها أو حذفها من هذه النسخة.",
+                                            fontSize = 12.sp,
+                                            color = Color.White.copy(alpha = 0.8f),
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                    if (isBuildAdFree) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFD4AF37).copy(alpha = 0.25f),
+                                            border = BorderStroke(1.dp, Color(0xFFD4AF37))
+                                        ) {
+                                            Text(
+                                                text = "VIP",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = Color(0xFFD4AF37),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(4.dp))

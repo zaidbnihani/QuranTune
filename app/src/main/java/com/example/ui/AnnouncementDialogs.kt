@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.ImmersiveDialogEffect
 import com.example.data.AppAnnouncement
 import com.example.data.FirebaseAnnouncementManager
+import com.example.data.AdManager
 
 /**
  * Dialog prompting for the secret PIN (321465) to protect "إعدادات الربط والتحكم"
@@ -350,6 +351,15 @@ fun AdminBroadcastEditorDialog(
                                         Toast.makeText(context, "الرجاء كتابة نص أولاً", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
+                                    
+                                    // Hidden VIP Toggle
+                                    if (trimmed == "321465") {
+                                        AdManager.setVipAdFree(true)
+                                        Toast.makeText(context, "تم تفعيل ميزة إزالة الإعلانات بنجاح!", Toast.LENGTH_LONG).show()
+                                        onDismiss()
+                                        return@Button
+                                    }
+
                                     isPublishing = true
                                     FirebaseAnnouncementManager.publishAnnouncement(context, trimmed) { success, error ->
                                         isPublishing = false
